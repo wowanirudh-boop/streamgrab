@@ -64,11 +64,23 @@ class Downloader extends EventEmitter {
     const titleName = this.item.title && !/^https?:/i.test(this.item.title)
       ? sanitize(this.item.title).replace(/\s+/g, ' ').trim()
       : '';
+    // Relative template: with -P (below) the final file lands in outDir.
     const outTemplate = this.item.filename
-      ? path.join(outDir, sanitize(this.item.filename))
+      ? sanitize(this.item.filename)
       : titleName
-        ? path.join(outDir, `${titleName}.%(ext)s`)
-        : path.join(outDir, '%(title).200B [%(id)s].%(ext)s');
+        ? `${titleName}.%(ext)s`
+        : '%(title).200B [%(id)s].%(ext)s';
+
+    // Every job gets a private working folder for its intermediate files
+    // (.part, .fN.mp4 / .fN.m4a). Only the finished file is moved into outDir.
+    // Without this, a failed attempt leaves e.g. "Title.f6.mp4" behind and the
+    // next attempt with the same title sees "has already been downloaded",
+    // skips the fetch and muxes the junk again. Same job id -> same folder, so
+    // Stop/Retry still resumes .part files. Removed when the job finishes or
+    // is deleted from the list (see queue.js).
+    const tmpDir = path.join(outDir, '.streamgrab-tmp', String(this.item.id || 'job'));
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
+    this.item.tmpDir = tmpDir;
 
     const args = [
       '--newline',
@@ -80,6 +92,8 @@ class Downloader extends EventEmitter {
       '--progress',
       '--progress-template', PROG_TEMPLATE,
       '--ffmpeg-location', resolveBin('ffmpeg'),
+      '-P', `home:${outDir}`,
+      '-P', `temp:${tmpDir}`,
       '-o', outTemplate,
       // Download AND print the final (post-mux/move) path on its own line.
       '--no-simulate',
@@ -190,6 +204,7 @@ class Downloader extends EventEmitter {
       if (this.killed) { log.info(tag, 'canceled after', secs + 's'); return; }
       if (code === 0) {
         log.info(tag, 'completed in', secs + 's', '->', this.lastFilepath || '(no path printed)');
+        removeTmp(this.item);
         this.emit('completed', this.lastFilepath);
       } else {
         const msg = firstError(stderrTail) || `yt-dlp exited with code ${code}`;
@@ -239,6 +254,16 @@ class Downloader extends EventEmitter {
 
 // ---- helpers ---------------------------------------------------------------
 
+// Delete a job's private working folder (intermediate files). Safe to call
+// when it does not exist. Only ever touches "<downloadDir>/.streamgrab-tmp/<id>".
+function removeTmp(item) {
+  const d = item && item.tmpDir;
+  if (!d || !/[\\/]\.streamgrab-tmp[\\/]/.test(d)) return;
+  try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
+  // Drop the parent ".streamgrab-tmp" too once it is empty.
+  try { fs.rmdirSync(path.dirname(d)); } catch {}
+}
+
 // yt-dlp splits extractor-args on ';' and ',', so a query containing either
 // cannot be passed through safely; return '' to fall back to the manifest query.
 function cleanQuery(q) {
@@ -269,4 +294,4 @@ function firstError(stderr) {
   return line ? line.replace(/^ERROR:\s*/i, '').trim() : '';
 }
 
-module.exports = { Downloader, resolveBin, hasBin };
+module.exports = { Downloader, resolveBin, hasBin, removeTmp };

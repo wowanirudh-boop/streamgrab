@@ -9,7 +9,7 @@ const { EventEmitter } = require('events');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { Downloader } = require('./engine/downloader');
+const { Downloader, removeTmp } = require('./engine/downloader');
 
 const MAX_CONCURRENT = 3;
 const MAX_PERSISTED = 500;   // keep the newest N rows on disk
@@ -190,6 +190,8 @@ class Queue extends EventEmitter {
 
   remove(id) {
     this.cancel(id);
+    const item = this.get(id);
+    if (item) removeTmp(item);     // its partial files go with it
     this.items = this.items.filter((i) => i.id !== id);
     this.scheduleSave();
   }
@@ -208,6 +210,7 @@ class Queue extends EventEmitter {
     for (const it of toRemove) {
       const runner = this.runners.get(it.id);
       if (runner) { runner.cancel(); this.runners.delete(it.id); }
+      removeTmp(it);
     }
     const removeIds = new Set(toRemove.map((i) => i.id));
     this.items = this.items.filter((i) => !removeIds.has(i.id));
