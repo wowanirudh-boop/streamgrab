@@ -229,6 +229,7 @@ ipcMain.handle('download:add', (_e, url) => {
 ipcMain.handle('download:cancel', (_e, id) => { queue.cancel(id); broadcastQueue(); return { ok: true }; });
 ipcMain.handle('download:remove', (_e, id) => { queue.remove(id); broadcastQueue(); return { ok: true }; });
 ipcMain.handle('download:retry', (_e, id) => { queue.retry(id); broadcastQueue(); return { ok: true }; });
+ipcMain.handle('download:clear', (_e, which) => { const n = queue.clear(which); broadcastQueue(); return { ok: true, cleared: n }; });
 
 ipcMain.handle('item:open-folder', (_e, id) => {
   const item = queue.get(id);

@@ -62,6 +62,11 @@ function render(items) {
   const active = items.filter((i) => i.state === 'downloading').length;
   const done = items.filter((i) => i.state === 'done').length;
   countsEl.textContent = `${active} active · ${done} done · ${items.length} total`;
+
+  const finished = items.filter((i) => ['done', 'error', 'canceled'].includes(i.state)).length;
+  clearDoneBtn.disabled = finished === 0;
+  clearAllBtn.disabled = items.length === 0;
+  clearDoneBtn.textContent = finished ? `Clear completed (${finished})` : 'Clear completed';
 }
 
 rowsEl.addEventListener('click', async (e) => {
@@ -98,6 +103,18 @@ function shortDir(dir) {
 window.sg.onQueueUpdate(render);
 
 document.getElementById('logBtn').addEventListener('click', () => window.sg.openLog());
+
+const clearDoneBtn = document.getElementById('clearDoneBtn');
+const clearAllBtn = document.getElementById('clearAllBtn');
+clearDoneBtn.addEventListener('click', async () => {
+  await window.sg.clear('completed');
+  render(await window.sg.getQueue());
+});
+clearAllBtn.addEventListener('click', async () => {
+  if (!confirm('Cancel all downloads and clear the entire list?')) return;
+  await window.sg.clear('all');
+  render(await window.sg.getQueue());
+});
 
 const loginToggle = document.getElementById('loginToggle');
 loginToggle.addEventListener('change', () => window.sg.setSettings({ launchAtLogin: loginToggle.checked }));

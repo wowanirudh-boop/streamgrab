@@ -126,6 +126,27 @@ class Queue extends EventEmitter {
     this.items = this.items.filter((i) => i.id !== id);
   }
 
+  // Bulk clear. which='completed' drops finished rows (done/error/canceled) and
+  // leaves anything still queued or downloading; which='all' cancels everything
+  // first, then empties the list. Returns how many rows were removed.
+  clear(which = 'completed') {
+    const finished = new Set(['done', 'error', 'canceled']);
+    let toRemove;
+    if (which === 'all') {
+      toRemove = this.items.slice();
+    } else {
+      toRemove = this.items.filter((i) => finished.has(i.state));
+    }
+    for (const it of toRemove) {
+      const runner = this.runners.get(it.id);
+      if (runner) { runner.cancel(); this.runners.delete(it.id); }
+    }
+    const removeIds = new Set(toRemove.map((i) => i.id));
+    this.items = this.items.filter((i) => !removeIds.has(i.id));
+    this.pump();
+    return toRemove.length;
+  }
+
   get(id) {
     return this.items.find((i) => i.id === id);
   }

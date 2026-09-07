@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('sg', {
   cancel: (id) => ipcRenderer.invoke('download:cancel', id),
   remove: (id) => ipcRenderer.invoke('download:remove', id),
   retry: (id) => ipcRenderer.invoke('download:retry', id),
+  clear: (which) => ipcRenderer.invoke('download:clear', which),
   openFolder: (id) => ipcRenderer.invoke('item:open-folder', id),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch) => ipcRenderer.invoke('settings:set', patch),

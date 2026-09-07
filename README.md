@@ -102,7 +102,8 @@ which the host must also allow:
 | `app/host-registration.js` | Writes the native-messaging manifest + registry keys |
 | `app/queue.js` | Download queue + concurrency |
 | `app/engine/downloader.js` | yt-dlp/aria2/ffmpeg orchestration + progress parsing |
-| `app/renderer/` | Desktop UI (download list) |
+| `app/renderer/` | Desktop UI (download list, clear-completed / clear-all) |
+| `PRD.md` | Product requirements: built MVP + V1/V2 roadmap |
 | `extension/background.js` | webRequest detector + native-messaging client |
 | `extension/content.js` | In-page overlay button |
 | `extension/popup.*` | Toolbar popup list |
