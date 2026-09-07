@@ -125,6 +125,12 @@ async function showBridgeInfo() {
   const conn = document.getElementById('conn');
   const text = document.getElementById('connText');
   const host = info.host || {};
+  // Release builds keep no log file unless started with --sg-debug.
+  const logBtn = document.getElementById('logBtn');
+  if (!info.logPath) {
+    logBtn.disabled = true;
+    logBtn.title = 'Logging is off in release builds. Start StreamGrab with --sg-debug to enable it.';
+  }
   if (info.port && host.ok) {
     conn.style.color = '#34c77b';
     text.textContent = `Chrome link ready on 127.0.0.1:${info.port}${info.debug ? ' · DEBUG' : ''}`;

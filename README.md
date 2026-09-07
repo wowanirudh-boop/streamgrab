@@ -115,10 +115,11 @@ which the host must also allow:
 
 ## Troubleshooting
 
-- **A download failed**: the reason is shown under the row in the app, and in
-  `%APPDATA%\StreamGrab\app.log` (footer **Log** button opens it). Every
-  yt-dlp ERROR/WARNING line is logged. For the full yt-dlp output plus
-  DevTools, run `npm run debug` (or start the installed app with `--sg-debug`).
+- **A download failed**: the reason is shown under the row in the app. The
+  installed (release) build keeps **no log file** so nothing grows on disk; to
+  capture one, start it with `--sg-debug` and the footer **Log** button opens
+  `%APPDATA%\StreamGrab\app.log` (full yt-dlp output, DevTools open). Dev runs
+  via `npm start` always log; `npm run debug` makes them verbose.
 - Popup says **Native host has exited**: read `%APPDATA%\StreamGrab\host.log`.
 - Popup says **forbidden**: the extension id is not in `allowed_origins` of
   `%APPDATA%\StreamGrab\com.streamgrab.host.json` (see *Publishing*).

@@ -6,6 +6,20 @@
   font: 13px/1.3 "Segoe UI", system-ui, sans-serif;
   display: none;
 }
+/* Fullscreen: hidden and click-through by default so it never covers the video
+   or its controls; raised above the player's control bar; fades in on mouse
+   movement (.sg-peek), while hovered, or while the list is open. */
+#streamgrab-overlay.sg-fs {
+  bottom: 88px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s ease;
+}
+#streamgrab-overlay.sg-fs.sg-peek,
+#streamgrab-overlay.sg-fs.sg-open {
+  opacity: 1;
+  pointer-events: auto;
+}
 #streamgrab-overlay .sg-pill {
   display: inline-flex;
   align-items: center;

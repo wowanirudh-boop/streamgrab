@@ -1,9 +1,13 @@
 'use strict';
 
-// Tiny file logger. Everything the app prints with console.* also lands in
-// %APPDATA%\StreamGrab\app.log, plus structured lines from the download engine
-// (arguments, yt-dlp stderr, exit codes). Start the app with --debug for
-// verbose output (full yt-dlp stderr, DevTools open).
+// Tiny file logger. When enabled, everything the app prints with console.*
+// also lands in %APPDATA%\StreamGrab\app.log, plus structured lines from the
+// download engine (arguments, yt-dlp stderr, exit codes).
+//
+// Release (packaged) builds do NOT write a log file at all unless started with
+// --sg-debug, so the file never grows on end-user machines. Dev builds
+// (npm start) always log, and --sg-debug makes the log verbose (full yt-dlp
+// stderr) and opens DevTools.
 
 const fs = require('fs');
 const path = require('path');
@@ -35,8 +39,15 @@ function trim(p) {
   } catch {}
 }
 
-function init(dir, { verbose: v = false, mirrorPath = null } = {}) {
+function init(dir, { enabled = true, verbose: v = false, mirrorPath = null } = {}) {
   verbose = !!v;
+  if (!enabled) {
+    // No file, console left untouched, debug() is a no-op. path() returns null
+    // so the UI can hide its "Log" button.
+    file = null;
+    mirror = null;
+    return;
+  }
   file = path.join(dir, 'app.log');
   try { fs.mkdirSync(dir, { recursive: true }); } catch {}
   trim(file);
@@ -54,10 +65,11 @@ function init(dir, { verbose: v = false, mirrorPath = null } = {}) {
 module.exports = {
   init,
   isVerbose: () => verbose,
-  path: () => file,
+  path: () => file,          // null when file logging is off
+  isEnabled: () => !!file,
   info: (...a) => console.log(...a),
   warn: (...a) => console.warn(...a),
   error: (...a) => console.error(...a),
   // Only written when --debug is on (never echoed to the console otherwise).
-  debug: (...a) => { if (verbose) { write('DEBUG', a); orig.log(...a); } }
+  debug: (...a) => { if (verbose && file) { write('DEBUG', a); orig.log(...a); } }
 };

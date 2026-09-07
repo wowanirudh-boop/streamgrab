@@ -7,6 +7,41 @@ let items = [];
 let panel = null;
 let open = false;
 
+// Fullscreen behaviour: while the page (or the player) is fullscreen the pill
+// stays hidden so it never covers the video. It appears briefly when the mouse
+// moves (like the player's own controls), stays while hovered or while its list
+// is open, and is raised above the bottom control bar. Outside fullscreen it
+// is always visible, as before.
+const FS_PEEK_MS = 2500;
+let peekTimer = null;
+let hovering = false;
+
+function isFullscreen() {
+  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+}
+
+function applyFullscreen() {
+  if (!panel) return;
+  const fs = isFullscreen();
+  panel.classList.toggle('sg-fs', fs);
+  panel.classList.toggle('sg-open', open);
+  if (!fs) { panel.classList.remove('sg-peek'); clearTimeout(peekTimer); }
+}
+
+function peek() {
+  if (!panel || !isFullscreen() || !items.length) return;
+  panel.classList.add('sg-peek');
+  clearTimeout(peekTimer);
+  peekTimer = setTimeout(() => {
+    if (hovering) { peek(); return; }   // keep it while the mouse is on it
+    panel.classList.remove('sg-peek');
+  }, FS_PEEK_MS);
+}
+
+document.addEventListener('fullscreenchange', applyFullscreen);
+document.addEventListener('webkitfullscreenchange', applyFullscreen);
+document.addEventListener('mousemove', () => { if (panel && isFullscreen()) peek(); }, { passive: true });
+
 function ensurePanel() {
   if (panel) return panel;
   panel = document.createElement('div');
@@ -17,7 +52,10 @@ function ensurePanel() {
     </button>
     <div class="sg-list" hidden></div>`;
   document.documentElement.appendChild(panel);
-  panel.querySelector('.sg-pill').addEventListener('click', () => { open = !open; renderList(); });
+  panel.querySelector('.sg-pill').addEventListener('click', () => { open = !open; renderList(); applyFullscreen(); });
+  panel.addEventListener('mouseenter', () => { hovering = true; });
+  panel.addEventListener('mouseleave', () => { hovering = false; if (isFullscreen()) peek(); });
+  applyFullscreen();
   return panel;
 }
 
@@ -35,6 +73,7 @@ function render() {
   panel.querySelector('.sg-count').textContent = items.length;
   panel.querySelector('.sg-word').textContent = items.length === 1 ? ' video' : ' videos';
   renderList();
+  applyFullscreen();
 }
 
 function renderList() {

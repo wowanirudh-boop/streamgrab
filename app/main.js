@@ -20,8 +20,10 @@ const DEBUG = process.argv.includes('--sg-debug') || !!process.env.STREAMGRAB_DE
 
 const log = require('./log');
 log.init(app.getPath('userData'), {
-  // Dev builds log verbosely and keep a second copy of the log in the project
-  // folder (<project>/.dev/app.log) so it is easy to find while developing.
+  // Release builds write no log file unless started with --sg-debug, so the
+  // file never grows on end-user machines. Dev builds always log verbosely and
+  // keep a second copy in the project folder (<project>/.dev/app.log).
+  enabled: DEBUG || !app.isPackaged,
   verbose: DEBUG || !app.isPackaged,
   mirrorPath: app.isPackaged ? null : path.join(app.getAppPath(), '.dev', 'app.log')
 });
@@ -272,7 +274,11 @@ ipcMain.handle('bridge:info', () => ({
   logPath: log.path()
 }));
 
-ipcMain.handle('log:open', () => { shell.openPath(log.path()); return { ok: true }; });
+ipcMain.handle('log:open', () => {
+  if (!log.path()) return { ok: false, error: 'File logging is off in release builds; start StreamGrab with --sg-debug.' };
+  shell.openPath(log.path());
+  return { ok: true };
+});
 
 // Stay resident when the last window closes (see tray "Quit").
 app.on('window-all-closed', () => {});
