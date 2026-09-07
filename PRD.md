@@ -278,8 +278,12 @@ monitoring, and batch URL import.
   (`scripts/fetch-tools.js`) pulls yt-dlp, aria2c 1.37.0, and a matching
   ffmpeg + ffprobe pair from their official sources into `bin/`; the installer
   ships them. Multi-connection direct-file downloads are now real.
-- **MV3 service-worker eviction** can drop the per-tab detection list. *Action:*
-  persist detections to `chrome.storage.session` (noted in README limitations).
+- ~~**MV3 service-worker eviction** can drop the per-tab detection list.~~
+  *Resolved v1.2:* detections persist in `chrome.storage.session` and are
+  restored before any event is handled; verified by killing the worker
+  mid-playback over CDP. This was the root cause of a real report (a site
+  where IDM listed six HLS qualities but StreamGrab showed only eight small
+  MP4 fragments: the master playlist had been lost to an eviction).
 - **Cookie DB locking on Windows** when Chrome is running makes
   `--cookies-from-browser` unreliable; F8 must degrade gracefully to the
   captured header.
@@ -300,6 +304,15 @@ monitoring, and batch URL import.
 
 ## 13. Revision Log
 
+- **v1.2 (2026-09-08)** — Detection hardening after a real site report.
+  Detections persist across service-worker restarts; playlists are recognised
+  by broader content-types, by `m3u8`/`.mpd` anywhere in the URL, and by
+  body-sniffing ambiguous responses; byte-range (206) chunks collapse to one
+  file with its true size; fragments of a known playlist are hidden and
+  orphan numbered fragments collapse to one non-downloadable PARTS row;
+  `EXT-X-MEDIA` audio/subtitle renditions fold into their master. Popup gains
+  **copy report** for diagnosing sites. Also: overlay hides in fullscreen;
+  release builds write no log file unless `--sg-debug`.
 - **v1.1 (2026-09-07)** — V1 started. Built: clear-completed / clear-all in the
   UI; queue persistence to `queue.json` with interrupted-download recovery;
   `fetch-tools` script bundling aria2c and a matching ffmpeg/ffprobe pair.

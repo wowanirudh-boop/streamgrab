@@ -3,6 +3,7 @@
 const listEl = document.getElementById('list');
 const connEl = document.getElementById('conn');
 const errEl = document.getElementById('err');
+const reportEl = document.getElementById('report');
 
 function showError(msg) {
   if (!msg) { errEl.classList.remove('show'); return; }
@@ -11,7 +12,7 @@ function showError(msg) {
 }
 
 function kindLabel(k) {
-  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : 'MP4';
+  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
 }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g,
@@ -30,18 +31,21 @@ function render(items) {
   }
   listEl.innerHTML = items.map((it, i) => {
     const tag = it.quality || it.sizeText || '';
+    const btn = it.noDownload
+      ? `<button class="off" disabled title="${esc(it.hint || '')}">Parts only</button>`
+      : `<button data-i="${i}">Download</button>`;
     return `
-    <div class="row">
+    <div class="row${it.noDownload ? ' dim' : ''}" ${it.hint ? `title="${esc(it.hint)}"` : ''}>
       <span class="badge ${it.kind}">${kindLabel(it.kind)}</span>
       <div class="t">
         <div class="n" title="${esc(it.name)}">${esc(it.name)}</div>
         <div class="s">${esc(tag)}</div>
       </div>
-      <button data-i="${i}">Download</button>
+      ${btn}
     </div>`;
   }).join('');
 
-  listEl.querySelectorAll('button').forEach((btn) => {
+  listEl.querySelectorAll('button[data-i]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const it = items[Number(btn.dataset.i)];
       btn.textContent = 'Sending…';
@@ -54,8 +58,23 @@ function render(items) {
   });
 }
 
+// "Copy report": everything the detector saw on this tab, as JSON, for
+// diagnosing a site where the right video is not being offered.
+async function copyReport(tabId, tabUrl) {
+  const res = await new Promise((r) => chrome.runtime.sendMessage({ type: 'get_media_raw', tabId }, r));
+  const report = { page: tabUrl, when: new Date().toISOString(), ...(res || {}) };
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+    reportEl.textContent = 'copied ✓';
+  } catch {
+    reportEl.textContent = 'copy failed';
+  }
+  setTimeout(() => { reportEl.textContent = 'copy report'; }, 1500);
+}
+
 (async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  reportEl.addEventListener('click', () => copyReport(tab.id, tab.url));
   // List first (instant), then verify the app link (may take a while if the
   // native host has to start the app).
   chrome.runtime.sendMessage({ type: 'get_media', tabId: tab.id }, (res) => {

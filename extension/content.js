@@ -60,7 +60,7 @@ function ensurePanel() {
 }
 
 function kindLabel(k) {
-  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : 'MP4';
+  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
 }
 
 function render() {
@@ -82,18 +82,21 @@ function renderList() {
   if (!open) return;
   list.innerHTML = items.map((it, i) => {
     const tag = it.quality ? it.quality : it.sizeText ? it.sizeText : '';
+    const btn = it.noDownload
+      ? `<button class="sg-dl sg-off" disabled title="${escapeAttr(it.hint || '')}">Parts only</button>`
+      : `<button class="sg-dl" data-i="${i}">Download</button>`;
     return `
-    <div class="sg-row">
+    <div class="sg-row" ${it.hint ? `title="${escapeAttr(it.hint)}"` : ''}>
       <div class="sg-meta">
         <span class="sg-badge sg-${it.kind}">${kindLabel(it.kind)}</span>
         <span class="sg-title" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</span>
         ${tag ? `<span class="sg-size">${escapeHtml(tag)}</span>` : ''}
       </div>
-      <button class="sg-dl" data-i="${i}">Download</button>
+      ${btn}
     </div>`;
   }).join('');
 
-  list.querySelectorAll('.sg-dl').forEach((btn) => {
+  list.querySelectorAll('.sg-dl[data-i]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const it = items[Number(btn.dataset.i)];
       // After the extension is reloaded/updated, scripts already injected into

@@ -17,6 +17,13 @@
     .badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
              background: #232a38; color: #8a93a6; }
     .hls { color: #7ec4ff; } .dash { color: #c39bff; } .progressive { color: #9be7a0; }
+    .segments { color: #ffb454; }
+    .row.dim .t { opacity: .7; }
+    button.off { background: #2c3444; color: #8a93a6; cursor: default; }
+    button.off:hover { background: #2c3444; }
+    footer { display: flex; justify-content: flex-end; padding: 6px 12px; border-top: 1px solid #232a38; }
+    footer a { color: #8a93a6; font-size: 11px; cursor: pointer; text-decoration: none; }
+    footer a:hover { color: #e6e9ef; }
     .t { flex: 1; min-width: 0; }
     .t .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .t .s { color: #8a93a6; font-size: 11px; }
@@ -40,6 +47,7 @@
   </header>
   <div id="err" class="err"></div>
   <div id="list" class="list"></div>
+  <footer><a id="report" title="Copy everything the detector saw on this tab (for diagnosing a site)">copy report</a></footer>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -88,8 +88,14 @@ which the host must also allow:
 - **DRM (Widevine/PlayReady) is not supported** and never will be by this
   approach — Netflix/Disney+/etc. segments are encrypted. This works on clear
   (non-DRM) streams and direct files only.
-- Detection state lives in the MV3 service worker, which Chrome may evict; a
-  detected list can reset. (Persist to `chrome.storage.session` in v2.)
+- Detection state is kept in `chrome.storage.session`, so it survives Chrome
+  evicting the MV3 service worker mid-playback, but it is cleared when the
+  browser closes. If a video was playing before the extension was installed or
+  reloaded, reload the page to detect it.
+- Stream fragments seen without their playlist show as a single **PARTS** row
+  that cannot be downloaded (a fragment is not a video). The popup's
+  **copy report** link copies everything the detector saw on the tab, for
+  diagnosing such a site.
 - Pause/resume is currently stop + retry (yt-dlp resumes partial files with
   `--continue`). True pause is a v2 item.
 - Windows-first: the native host and its registration are Windows-only for now.

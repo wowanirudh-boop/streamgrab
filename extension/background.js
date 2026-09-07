@@ -12,10 +12,19 @@
 const HOST_NAME = 'com.streamgrab.host';
 
 const MANIFEST_EXT = /\.(m3u8|mpd)(\?|#|$)/i;
+// Playlists whose URL hides the extension (".../master.m3u8/...", "?file=x.m3u8",
+// "/hls/stream", "/manifest") are confirmed by fetching them (see classifyManifest).
+const MANIFEST_ANY = /m3u8|\.mpd\b/i;
+const SNIFF_URL = /(hls|m3u|playlist|manifest|chunklist|mpd|dash)/i;
+const SNIFF_CT = /^(text\/plain|application\/octet-stream|binary\/octet-stream|application\/json)?\s*(;|$)/i;
+const SNIFF_MAX_BYTES = 2 * 1024 * 1024;
 const PROGRESSIVE_EXT = /\.(mp4|webm|m4v|mov|flv|mkv|avi)(\?|#|$)/i;
-const MEDIA_CT = /(application\/(vnd\.apple\.mpegurl|x-mpegurl|dash\+xml)|video\/(mp4|webm|x-flv|quicktime|x-matroska))/i;
+const MEDIA_CT = /(application\/(vnd\.apple\.mpegurl|x-mpegurl|mpegurl|dash\+xml)|audio\/(mpegurl|x-mpegurl)|video\/(vnd\.mpeg\.dash\.mpd|mp4|webm|x-flv|quicktime|x-matroska))/i;
 const MASTER_NAME = /(master|index|playlist|manifest|main|chunklist)?\.?m3u8/i;
 const MIN_PROGRESSIVE_BYTES = 300 * 1024;
+// Query params that only select a byte range of the same file (range requests
+// from MediaSource players). Stripped so one file = one item, not one per chunk.
+const RANGE_PARAMS = /^(range|bytes|byterange|start|end|offset)$/i;
 
 // Sites whose video can't be sniffed off the wire but ARE handled by yt-dlp from
 // the page URL (YouTube encrypts/splits its streams, etc.). For these we offer a
@@ -50,6 +59,32 @@ const mediaByTab = new Map();
 const presentedByTab = new Map();
 /** @type {Map<string, object>} requestId -> captured request headers */
 const reqHeaders = new Map();
+
+// ---- detection state persistence ------------------------------------------
+//
+// Chrome evicts an idle MV3 service worker after ~30 s. A video's master
+// playlist is fetched ONCE at page load; segments keep arriving for minutes.
+// Without persistence, an eviction mid-playback loses the playlist and the
+// popup ends up listing only the segments seen since the restart. So the raw
+// per-tab list lives in chrome.storage.session (memory-backed, cleared when the
+// browser closes) and is restored before any event is processed.
+const restored = chrome.storage.session.get('mediaByTab').then((r) => {
+  const saved = r && r.mediaByTab;
+  if (saved && typeof saved === 'object') {
+    for (const [tabId, list] of Object.entries(saved)) {
+      if (Array.isArray(list) && list.length) mediaByTab.set(Number(tabId), list);
+    }
+    for (const tabId of mediaByTab.keys()) presentedByTab.set(tabId, computePresented(tabId));
+  }
+}).catch(() => {});
+
+let persistTimer = null;
+function persist() {
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    chrome.storage.session.set({ mediaByTab: Object.fromEntries(mediaByTab) }).catch(() => {});
+  }, 250);
+}
 
 // ---- native messaging ------------------------------------------------------
 
@@ -167,6 +202,22 @@ function classify(url) {
   return null;
 }
 
+// Same file requested in byte-range chunks must collapse to one item.
+function dedupKey(url) {
+  try {
+    const u = new URL(url);
+    for (const k of [...u.searchParams.keys()]) if (RANGE_PARAMS.test(k)) u.searchParams.delete(k);
+    u.hash = '';
+    return u.href;
+  } catch { return url; }
+}
+
+// "bytes 0-699999/123456789" -> 123456789
+function contentRangeTotal(headers) {
+  const m = headerValue(headers, 'content-range').match(/\/(\d+)\s*$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 function headerValue(headers, name) {
   if (!headers) return '';
   const h = headers.find((x) => x.name.toLowerCase() === name);
@@ -195,9 +246,10 @@ chrome.webRequest.onSendHeaders.addListener(
 const FRAGMENT_EXT = /\.(ts|m4s|aac|m4a|mp4|m4v|webm|cmfv|cmfa)(\?|#|$)/i;
 const KEY_EXT = /\.key(\?|#|$)/i;
 
-function sampleFragment(details, headers) {
+async function sampleFragment(details, headers) {
   const tabId = details.tabId;
   if (tabId < 0) return;
+  await restored;
   const isKey = KEY_EXT.test(details.url);
   if (!isKey && !FRAGMENT_EXT.test(details.url)) return;
   const list = mediaByTab.get(tabId);
@@ -221,16 +273,30 @@ function sampleFragment(details, headers) {
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     const ct = headerValue(details.responseHeaders, 'content-type');
-    const len = parseInt(headerValue(details.responseHeaders, 'content-length'), 10) || 0;
+    let len = parseInt(headerValue(details.responseHeaders, 'content-length'), 10) || 0;
+    // A range chunk (206) reports only its own length; the file's real size is
+    // the total in Content-Range.
+    if (details.statusCode === 206) len = contentRangeTotal(details.responseHeaders) || len;
 
     let kind = classify(details.url);
+    let guessed = false;
     if (!kind && MEDIA_CT.test(ct)) {
-      kind = /mpegurl/i.test(ct) ? 'hls' : /dash/i.test(ct) ? 'dash' : 'progressive';
+      kind = /mpegurl/i.test(ct) ? 'hls' : /dash|mpd/i.test(ct) ? 'dash' : 'progressive';
+    }
+    // Playlists served with a bland content-type and no extension in the URL
+    // (".../master.m3u8/index", "?playlist=hls", "/stream/manifest"): take them
+    // as candidates and let classifyManifest() confirm by reading the body.
+    if (!kind && MANIFEST_ANY.test(details.url)) {
+      kind = /\.mpd\b/i.test(details.url) ? 'dash' : 'hls';
+      guessed = true;
+    } else if (!kind && SNIFF_CT.test(ct) && SNIFF_URL.test(details.url) && (!len || len < SNIFF_MAX_BYTES)) {
+      kind = 'hls';
+      guessed = true;
     }
     if (!kind) return;
     if (kind === 'progressive' && len && len < MIN_PROGRESSIVE_BYTES) return;
 
-    record(details, kind, ct, len);
+    record(details, kind, ct, len, guessed);
   },
   { urls: ['<all_urls>'] },
   ['responseHeaders', 'extraHeaders']
@@ -240,16 +306,23 @@ function cleanup(details) { reqHeaders.delete(details.requestId); }
 chrome.webRequest.onCompleted.addListener(cleanup, { urls: ['<all_urls>'] });
 chrome.webRequest.onErrorOccurred.addListener(cleanup, { urls: ['<all_urls>'] });
 
-async function record(details, kind, contentType, size) {
+async function record(details, kind, contentType, size, guessed = false) {
   const tabId = details.tabId;
   if (tabId < 0) return;
+  await restored;
 
   // YouTube (googlevideo) chunks are noise — that video is handled via the page
   // URL by yt-dlp, so don't surface the raw stream fragments.
   try { if (/googlevideo\.com$/i.test(new URL(details.url).hostname)) return; } catch {}
 
   const list = mediaByTab.get(tabId) || [];
-  if (list.some((m) => m.url === details.url)) return; // dedup
+  const key = dedupKey(details.url);
+  const existing = list.find((m) => m.key === key || m.url === details.url);
+  if (existing) {
+    // Another range chunk of a file we already know: just learn its true size.
+    if (size > (existing.size || 0)) { existing.size = size; refresh(tabId); }
+    return;
+  }
 
   let pageUrl = '';
   let pageTitle = '';
@@ -261,9 +334,11 @@ async function record(details, kind, contentType, size) {
 
   const item = {
     url: details.url,
+    key,
     kind,
     // role: master | media | progressive | dash | unknown
     role: kind === 'progressive' ? 'progressive' : kind === 'dash' ? 'dash' : 'unknown',
+    guessed,          // true = must be confirmed by reading the body
     variants: [],
     resolution: '',
     contentType,
@@ -275,29 +350,52 @@ async function record(details, kind, contentType, size) {
   };
 
   list.unshift(item);
-  mediaByTab.set(tabId, list.slice(0, 60));
-  refresh(tabId);
+  mediaByTab.set(tabId, list.slice(0, 80));
+  // Guessed candidates are not shown until the body confirms them.
+  if (!guessed) refresh(tabId); else persist();
 
-  if (kind === 'hls') classifyHls(item, tabId);
+  if (kind === 'hls' || (kind === 'dash' && guessed)) classifyManifest(item, tabId);
 }
 
-// Fetch an HLS playlist and decide master vs variant. The extension has host
-// permissions, so cross-origin fetch + read is allowed.
-async function classifyHls(item, tabId) {
+// Fetch a playlist and decide master vs variant (HLS), or confirm a guessed
+// DASH manifest. The extension has host permissions, so cross-origin fetch +
+// read is allowed. Guessed candidates whose body is not a playlist are dropped.
+async function classifyManifest(item, tabId) {
+  let text = null;
   try {
     const res = await fetch(item.url, { credentials: 'include' });
-    const text = await res.text();
-    if (/#EXT-X-STREAM-INF/i.test(text)) {
-      item.role = 'master';
-      item.variants = parseMaster(text, item.url);
-      item.resolution = bestResolution(item.variants);
-    } else if (/#EXTINF/i.test(text)) {
-      item.role = 'media';
-    }
+    text = await res.text();
   } catch {
-    // Leave as 'unknown'; the grouping heuristic still collapses siblings.
+    // Network/CORS failure: keep a real (.m3u8) item as 'unknown'; drop a guess.
+    if (item.guessed) dropItem(tabId, item);
+    refresh(tabId);
+    return;
+  }
+  const head = text.slice(0, 4096);
+  if (item.kind === 'dash') {
+    if (!/<MPD[\s>]/i.test(head)) { dropItem(tabId, item); refresh(tabId); return; }
+    item.guessed = false;
+  } else if (/#EXT-X-STREAM-INF/i.test(text)) {
+    item.role = 'master';
+    item.variants = parseMaster(text, item.url);
+    item.renditions = parseRenditions(text, item.url);
+    item.resolution = bestResolution(item.variants);
+    item.guessed = false;
+  } else if (/#EXTINF/i.test(text)) {
+    item.role = 'media';
+    item.guessed = false;
+  } else if (item.guessed || !/^\s*#EXTM3U/i.test(head)) {
+    // Not a playlist at all (JSON, HTML error page, ...).
+    dropItem(tabId, item);
   }
   refresh(tabId);
+}
+
+function dropItem(tabId, item) {
+  const list = mediaByTab.get(tabId);
+  if (!list) return;
+  const i = list.indexOf(item);
+  if (i >= 0) list.splice(i, 1);
 }
 
 function parseMaster(text, baseUrl) {
@@ -325,6 +423,25 @@ function parseMaster(text, baseUrl) {
   return out;
 }
 
+// Audio / subtitle / alternate-video renditions (#EXT-X-MEDIA ... URI="...")
+// are separate playlists that belong to the same master; collect them so they
+// collapse into it instead of showing up as extra "videos".
+function parseRenditions(text, baseUrl) {
+  const out = [];
+  const base = new URL(baseUrl);
+  for (const line of text.split(/\r?\n/)) {
+    if (!/^#EXT-X-MEDIA:/i.test(line.trim())) continue;
+    const m = line.match(/URI="([^"]+)"/i);
+    if (!m) continue;
+    try {
+      const u = new URL(m[1], baseUrl);
+      if (!u.search && base.search && u.origin === base.origin) u.search = base.search;
+      out.push(u.href);
+    } catch {}
+  }
+  return out;
+}
+
 function bestResolution(variants) {
   const withH = variants.filter((v) => v.height);
   if (!withH.length) return '';
@@ -348,6 +465,13 @@ function isMasterName(u) {
   return /(master|index|playlist|manifest|main)/i.test(n);
 }
 
+// Segments of a fragmented stream (HLS-fMP4 / DASH) arrive as ".mp4"/".m4s"
+// files that look progressive: "seg-12-v1-a1.mp4", "chunk_0034.mp4",
+// "video_1080p_00017.m4s". Normalising digit runs gives siblings one key.
+function segmentKey(u) {
+  return baseDirKey(u) + fileName(u).replace(/\d+/g, '#');
+}
+
 // Collapse variant playlists into their master, and group leftover siblings so
 // one video = one item.
 function computePresented(tabId) {
@@ -355,18 +479,49 @@ function computePresented(tabId) {
 
   const variantUrls = new Set();
   const masterDirs = new Set();
+  const playlistDirs = new Set(); // dirs of any playlist: segments there are not videos
   for (const it of items) {
+    if (it.guessed) continue;
     if (it.role === 'master') {
       masterDirs.add(baseDirKey(it.url));
-      for (const v of (it.variants || [])) variantUrls.add(v.url);
+      for (const v of (it.variants || [])) { variantUrls.add(v.url); playlistDirs.add(baseDirKey(v.url)); }
+      for (const r of (it.renditions || [])) { variantUrls.add(r); playlistDirs.add(baseDirKey(r)); }
     }
+    if (it.role === 'master' || it.role === 'media' || it.role === 'dash' ||
+        (it.role === 'unknown' && it.kind === 'hls')) playlistDirs.add(baseDirKey(it.url));
+  }
+
+  // Numbered-sibling groups among progressive items (3+ = a segmented stream).
+  const segGroups = new Map();
+  for (const it of items) {
+    if (it.role !== 'progressive') continue;
+    const k = segmentKey(it.url);
+    segGroups.set(k, (segGroups.get(k) || 0) + 1);
   }
 
   const shown = [];
   const groupPrimary = new Map(); // dirKey -> chosen item (for unknown/media siblings)
+  const segShown = new Set();     // segment groups already represented by one row
 
   for (const it of items) {
-    if (it.role === 'master' || it.role === 'dash' || it.role === 'progressive' || it.role === 'page') {
+    if (it.guessed) continue; // unconfirmed candidate
+    if (it.role === 'progressive') {
+      // A fragment of a stream we already list via its playlist: hide it.
+      if (playlistDirs.has(baseDirKey(it.url))) continue;
+      const k = segmentKey(it.url);
+      const n = segGroups.get(k) || 0;
+      if (n >= 3) {
+        // Fragments without a known playlist: one informational row, not N
+        // bogus "videos" (the app cannot make a full video from a fragment).
+        if (segShown.has(k)) continue;
+        segShown.add(k);
+        shown.push({ ...it, role: 'segments', segmentCount: n });
+        continue;
+      }
+      shown.push(it);
+      continue;
+    }
+    if (it.role === 'master' || it.role === 'dash' || it.role === 'page') {
       shown.push(it);
       continue;
     }
@@ -397,6 +552,16 @@ function fmtSize(b) {
 }
 
 function toDisplay(it) {
+  if (it.role === 'segments') {
+    return {
+      url: it.url, kind: 'segments', role: 'segments',
+      name: it.pageTitle || fileName(it.url).replace(/\d+/g, '#'),
+      quality: '', sizeText: `${it.segmentCount} parts`, variants: [],
+      headers: {}, pageUrl: it.pageUrl, pageTitle: it.pageTitle,
+      noDownload: true,
+      hint: 'Only stream fragments were seen; the playlist was not detected. Reload the page and start playback again.'
+    };
+  }
   if (it.role === 'page') {
     return {
       url: it.url, kind: 'page', role: 'page',
@@ -434,6 +599,7 @@ function refresh(tabId) {
   presentedByTab.set(tabId, presented);
   updateBadge(tabId, presented.length);
   chrome.tabs.sendMessage(tabId, { type: 'media_update', items: presented }).catch(() => {});
+  persist();
 }
 
 function updateBadge(tabId, n) {
@@ -470,15 +636,19 @@ function addPageItem(tabId, url, title) {
   refresh(tabId);
 }
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  await restored;
   mediaByTab.delete(tabId);
   presentedByTab.delete(tabId);
+  persist();
 });
-chrome.webNavigation?.onCommitted?.addListener?.((d) => {
+chrome.webNavigation?.onCommitted?.addListener?.(async (d) => {
   if (d.frameId === 0) {
+    await restored;
     mediaByTab.delete(d.tabId);
     presentedByTab.delete(d.tabId);
     updateBadge(d.tabId, 0);
+    persist();
   }
 });
 
@@ -487,8 +657,25 @@ chrome.webNavigation?.onCommitted?.addListener?.((d) => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'get_media') {
     const tabId = msg.tabId ?? sender.tab?.id;
-    sendResponse({ items: presentedByTab.get(tabId) || [], appConnected: linkReady, lastError: lastNativeError });
-    return false;
+    restored.then(() => {
+      if (!presentedByTab.has(tabId) && mediaByTab.has(tabId)) presentedByTab.set(tabId, computePresented(tabId));
+      sendResponse({ items: presentedByTab.get(tabId) || [], appConnected: linkReady, lastError: lastNativeError });
+    });
+    return true;
+  }
+
+  // Everything the detector saw on this tab, for diagnosing a site that IDM
+  // handles and we don't. Copied to the clipboard by the popup.
+  if (msg.type === 'get_media_raw') {
+    restored.then(() => {
+      const raw = (mediaByTab.get(msg.tabId) || []).map((it) => ({
+        url: it.url, kind: it.kind, role: it.role, guessed: !!it.guessed,
+        contentType: it.contentType, size: it.size, variants: (it.variants || []).length,
+        fragmentSample: !!it.fragmentSample, keySample: !!it.keySample, ts: new Date(it.ts).toISOString()
+      }));
+      sendResponse({ raw, presented: presentedByTab.get(msg.tabId) || [], log: nmLog.slice(-20) });
+    });
+    return true;
   }
 
   if (msg.type === 'get_status') {

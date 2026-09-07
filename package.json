@@ -14,7 +14,8 @@
     "predist": "node scripts/build-host.js",
     "dist": "electron-builder --win",
     "predebug": "node scripts/build-host.js",
-    "debug": "electron . --sg-debug"
+    "debug": "electron . --sg-debug",
+    "test-detect": "node scripts/detect-test.js"
   },
   "devDependencies": {
     "electron": "^32.2.0",
