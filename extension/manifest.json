@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "StreamGrab",
+  "version": "0.1.0",
+  "description": "Detect streaming video (HLS / DASH / progressive) and send it to the StreamGrab download manager.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAv0pQcKTprlvnf6cET7nxwz81ilKQzCbmdD2Lrl7fU8OukBhVZji4fmLlSc8icNrY0hXtVO3qDcGQigAN3aDXh3IksPSWNP3KHCCPE0dpQOZ2e91rkBC7hC4VZ8p2DmTHwOmqMAnpMGRZn5bgyeOccaSqcWvdU9cZ69U8AOkWubHfEsS3CyUrQOTNo6AxVRQ40gQDQM6MKlfl0YBVJA9eW2FrmSmzTBCmfHBPePRbxwszxKEFnz5yJFn3b2xw5kjOww5d4woQrDhxCiYTlvP34zgwxF8A+GuSA4ln78hEmJytvkOwskgMoBVW4AaV3ab+sY8hb5jxfT6wBN6EllvmXwIDAQAB",
+  "permissions": [
+    "webRequest",
+    "webNavigation",
+    "tabs",
+    "storage",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "StreamGrab",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

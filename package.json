@@ -1,0 +1,69 @@
+{
+  "name": "streamgrab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IDM-style download manager with Chrome video detection (Electron + yt-dlp / aria2 / ffmpeg).",
+  "main": "app/main.js",
+  "scripts": {
+    "start": "electron .",
+    "prestart": "node scripts/build-host.js",
+    "build-host": "node scripts/build-host.js",
+    "build-store": "node scripts/build-store.js",
+    "uninstall-host": "node scripts/uninstall-native-host.js",
+    "predist": "node scripts/build-host.js",
+    "dist": "electron-builder --win",
+    "predebug": "node scripts/build-host.js",
+    "debug": "electron . --sg-debug"
+  },
+  "devDependencies": {
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
+    "ws": "^8.18.0"
+  },
+  "build": {
+    "appId": "com.streamgrab.app",
+    "productName": "StreamGrab",
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "app/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*.exe"
+        ]
+      },
+      {
+        "from": "native-host/streamgrab-host.exe",
+        "to": "bin/streamgrab-host.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "StreamGrab",
+      "include": "build/installer.nsh"
+    }
+  }
+}

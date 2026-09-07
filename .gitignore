@@ -1,0 +1,21 @@
+node_modules/
+dist/
+dist-installer/
+out/
+
+# Bundled tools (download separately — see bin/README.md)
+bin/*.exe
+
+# Built by scripts/build-host.js
+native-host/streamgrab-host.exe
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.log
+
+# host diagnostics
+native-host/host-local.log
+
+# dev-only log mirror
+.dev/

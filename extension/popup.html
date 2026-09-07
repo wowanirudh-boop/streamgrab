@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { width: 340px; margin: 0; font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+           background: #141821; color: #e6e9ef; }
+    header { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+             border-bottom: 1px solid #2c3444; }
+    .brand { font-weight: 700; color: #4c8dff; }
+    .conn { margin-left: auto; font-size: 11px; color: #8a93a6; }
+    .conn.on { color: #34c77b; }
+    .conn.off { color: #ff5c6c; }
+    .list { max-height: 380px; overflow: auto; }
+    .row { display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+           border-bottom: 1px solid #232a38; }
+    .badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 4px;
+             background: #232a38; color: #8a93a6; }
+    .hls { color: #7ec4ff; } .dash { color: #c39bff; } .progressive { color: #9be7a0; }
+    .t { flex: 1; min-width: 0; }
+    .t .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .t .s { color: #8a93a6; font-size: 11px; }
+    button { background: #4c8dff; color: #fff; border: none; border-radius: 6px;
+             padding: 5px 10px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #2f6fe0; }
+    .empty { padding: 24px 14px; text-align: center; color: #8a93a6; }
+    .err { display: none; margin: 8px 12px; padding: 8px 10px; border-radius: 6px;
+           background: #3a1e24; color: #ff9aa5; font-size: 12px; line-height: 1.4;
+           border: 1px solid #5a2a33; word-break: break-word; }
+    .err.show { display: block; }
+    .err b { color: #ffc2ca; }
+    .err .log { margin: 6px 0 0; padding: 6px; background: #1a1f2b; color: #b8c0d0; font: 10px/1.35 Consolas, monospace;
+                max-height: 140px; overflow: auto; white-space: pre-wrap; border-radius: 4px; user-select: text; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="brand">▶ StreamGrab</span>
+    <span id="conn" class="conn">checking…</span>
+  </header>
+  <div id="err" class="err"></div>
+  <div id="list" class="list"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

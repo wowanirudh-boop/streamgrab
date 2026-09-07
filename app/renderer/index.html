@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StreamGrab</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">▶ StreamGrab</div>
+    <div class="add">
+      <input id="url" type="text" placeholder="Paste a video / page / .m3u8 URL and press Enter…" />
+      <button id="addBtn">Download</button>
+    </div>
+    <div class="spacer"></div>
+    <label class="ghost toggle" title="Keep StreamGrab running so the Chrome extension can always reach it"><input id="loginToggle" type="checkbox" /> Start with Windows</label>
+    <button id="dirBtn" class="ghost" title="Change download folder">📁 <span id="dirLabel">…</span></button>
+  </header>
+
+  <main>
+    <table class="downloads">
+      <thead>
+        <tr>
+          <th class="c-name">Name</th>
+          <th class="c-kind">Type</th>
+          <th class="c-size">Size</th>
+          <th class="c-prog">Progress</th>
+          <th class="c-speed">Speed</th>
+          <th class="c-eta">ETA</th>
+          <th class="c-actions"></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty">
+      <p>No downloads yet.</p>
+      <p class="hint">Stream a video in Chrome (with the StreamGrab extension installed) and click the
+      floating <b>⬇ Download</b> button — or paste a URL above.</p>
+    </div>
+  </main>
+
+  <footer class="statusbar">
+    <span id="conn" class="dot">●</span>
+    <span id="connText">Starting bridge…</span>
+    <span class="spacer"></span>
+    <span id="counts"></span>
+    <button id="logBtn" class="ghost small" title="Open app.log">Log</button>
+  </footer>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

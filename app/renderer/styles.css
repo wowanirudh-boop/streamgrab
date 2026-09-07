@@ -1,0 +1,140 @@
+:root {
+  --bg: #141821;
+  --bg2: #1b202b;
+  --bg3: #232a38;
+  --line: #2c3444;
+  --text: #e6e9ef;
+  --muted: #8a93a6;
+  --accent: #4c8dff;
+  --accent2: #2f6fe0;
+  --green: #34c77b;
+  --red: #ff5c6c;
+  --amber: #f5b13d;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* Topbar */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+}
+.brand { font-weight: 700; letter-spacing: .3px; color: var(--accent); }
+.add { display: flex; gap: 6px; flex: 1; max-width: 640px; }
+.add input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 10px;
+  outline: none;
+}
+.add input:focus { border-color: var(--accent); }
+button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+button:hover { background: var(--accent2); }
+button.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-weight: 500;
+}
+button.ghost:hover { color: var(--text); border-color: var(--accent); }
+.spacer { flex: 1; }
+
+/* Table */
+main { flex: 1; overflow: auto; position: relative; }
+.downloads { width: 100%; border-collapse: collapse; }
+.downloads thead th {
+  position: sticky; top: 0;
+  background: var(--bg2);
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.downloads tbody td {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.c-name { width: 40%; }
+.c-actions { width: 120px; text-align: right; }
+.name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+.suburl { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 360px; }
+
+.badge {
+  display: inline-block; padding: 2px 7px; border-radius: 4px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  background: var(--bg3); color: var(--muted);
+}
+.badge.hls { color: #7ec4ff; }
+.badge.dash { color: #c39bff; }
+.badge.progressive { color: #9be7a0; }
+
+/* Progress bar */
+.bar { background: var(--bg3); border-radius: 5px; height: 8px; overflow: hidden; min-width: 90px; }
+.bar > span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+.bar.done > span { background: var(--green); }
+.bar.error > span { background: var(--red); }
+.bar.canceled > span { background: var(--muted); }
+.pct { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+.state-done { color: var(--green); }
+.state-error { color: var(--red); }
+.state-canceled { color: var(--muted); }
+
+/* Row actions */
+.row-actions button {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  padding: 4px 8px; font-size: 12px; margin-left: 4px;
+}
+.row-actions button:hover { color: var(--text); border-color: var(--accent); }
+
+.empty {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  color: var(--muted); text-align: center; gap: 4px;
+}
+.empty.show { display: flex; }
+.empty .hint { font-size: 12px; max-width: 460px; }
+
+/* Statusbar */
+.statusbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px;
+  background: var(--bg2);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.dot { color: var(--green); }
+
+.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.toggle input { accent-color: #4c8dff; }
+
+.errmsg { color: #ff9aa5; font-size: 11px; margin-top: 2px; white-space: normal; word-break: break-word; }
+button.small { padding: 2px 8px; font-size: 11px; margin-left: 10px; }
