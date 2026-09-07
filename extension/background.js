@@ -360,6 +360,21 @@ async function record(details, kind, contentType, size, guessed = false) {
   if (kind === 'hls' || kind === 'dash') classifyManifest(item, tabId);
 }
 
+// Video representations of a DASH MPD: one entry per quality (no URL — the
+// app selects by height through yt-dlp, which handles the audio pairing).
+function parseMpdVariants(text) {
+  const out = [];
+  for (const m of text.matchAll(/<Representation\b([^>]*)>/gi)) {
+    const attrs = m[1];
+    const h = parseInt((attrs.match(/\bheight="(\d+)"/i) || [])[1] || '0', 10);
+    if (!h) continue; // audio representations have no height
+    const w = parseInt((attrs.match(/\bwidth="(\d+)"/i) || [])[1] || '0', 10);
+    const bw = parseInt((attrs.match(/\bbandwidth="(\d+)"/i) || [])[1] || '0', 10);
+    out.push({ resolution: w ? `${w}x${h}` : '', bandwidth: bw, url: '', height: h });
+  }
+  return out;
+}
+
 // Best height listed in a DASH MPD (Representation height="…" / maxHeight).
 function dashResolution(text) {
   const hs = [...text.matchAll(/(?:maxHeight|height)="(\d+)"/gi)].map((m) => parseInt(m[1], 10)).filter(Boolean);
@@ -387,6 +402,7 @@ async function classifyManifest(item, tabId) {
       refresh(tabId);
       return;
     }
+    item.variants = parseMpdVariants(text);
     item.resolution = dashResolution(text);
     item.guessed = false;
   } else if (/#EXT-X-STREAM-INF/i.test(text)) {
@@ -584,7 +600,7 @@ function toDisplay(it) {
     return {
       url: it.url, kind: 'page', role: 'page',
       name: it.pageTitle || `${it.site} video`,
-      quality: it.site || '', sizeText: '', variants: [],
+      quality: it.site || '', sizeText: '', variants: [], heights: [],
       headers: {}, pageUrl: it.url, pageTitle: it.pageTitle
     };
   }
@@ -602,6 +618,9 @@ function toDisplay(it) {
     quality: it.resolution || '',
     sizeText: it.role === 'progressive' ? fmtSize(it.size) : '',
     variants: it.variants || [],
+    // Resolutions the manifest actually offers, for the quality picker.
+    // A single progressive file has exactly one quality: no ladder.
+    heights: it.role === 'progressive' ? [-1] : (it.variants || []).map((v) => v.height).filter(Boolean),
     headers: it.headers,
     pageUrl: it.pageUrl,
     pageTitle: it.pageTitle,
@@ -709,7 +728,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       nmlog('download verifyLink ->', ok, ok ? '' : lastNativeError);
       if (!ok) return sendResponse({ ok: false, reason: 'not_connected', error: lastNativeError });
       const sent = sendToApp('download', {
-        url: msg.variantUrl || it.url,      // a chosen quality, or let yt-dlp pick
+        // Always the master/manifest/page URL: the app selects the quality via
+        // yt-dlp's format selector so audio pairing and muxing still work.
+        url: it.url,
+        quality: msg.quality || { kind: 'best' },
         kind: it.kind,
         headers: it.headers,
         pageUrl: it.pageUrl,

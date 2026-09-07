@@ -107,9 +107,22 @@ class Downloader extends EventEmitter {
       '-o', outTemplate,
       // Download AND print the final (post-mux/move) path on its own line.
       '--no-simulate',
-      '--print', 'after_move:filepath',
-      '--merge-output-format', 'mp4'
+      '--print', 'after_move:filepath'
     ];
+
+    // Quality. yt-dlp's selector works the same for HLS masters, DASH
+    // manifests and site extractors: best video at or below the chosen height
+    // plus best audio, muxed; or the whole thing if it only comes combined.
+    const q = this.item.quality || { kind: 'best' };
+    if (q.kind === 'audio') {
+      args.push('-f', 'bestaudio/best', '--extract-audio', '--audio-format', 'm4a', '--audio-quality', '0');
+    } else {
+      if (q.kind === 'height' && q.height) {
+        const h = q.height;
+        args.push('-f', `bestvideo*[height<=${h}]+bestaudio/best[height<=${h}]/bestvideo*+bestaudio/best`);
+      }
+      args.push('--merge-output-format', 'mp4');
+    }
 
     // Signed CDN streams (CloudFront Policy/Signature, Sprout Video, Vimeo…) keep
     // credentials in query strings while manifests list variants and segments

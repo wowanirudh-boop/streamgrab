@@ -4,7 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('sg', {
   getQueue: () => ipcRenderer.invoke('queue:get'),
-  addUrl: (url) => ipcRenderer.invoke('download:add', url),
+  addUrl: (url, quality) => ipcRenderer.invoke('download:add', url, quality),
   cancel: (id) => ipcRenderer.invoke('download:cancel', id),
   remove: (id) => ipcRenderer.invoke('download:remove', id),
   retry: (id) => ipcRenderer.invoke('download:retry', id),

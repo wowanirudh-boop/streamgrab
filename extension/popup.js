@@ -29,12 +29,24 @@ function setConn(on, pending) {
   connEl.className = 'conn ' + (on ? 'on' : pending ? '' : 'off');
 }
 
-function render(items) {
+// Quality <select> for one row. A single progressive file (heights [-1]) has
+// nothing to choose; streams list what the manifest offers; page items get
+// the standard ladder.
+function qualitySelect(it, i, stored) {
+  if (it.noDownload || (it.heights && it.heights[0] === -1)) return '';
+  const opts = SG_QUALITY.options(it.heights || []);
+  const sel = SG_QUALITY.pick(stored, opts);
+  return `<select class="q" data-q="${i}" title="Quality">${opts.map((o) =>
+    `<option value="${o.value}"${o.value === sel ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
+}
+
+async function render(items) {
   if (!items.length) {
     listEl.innerHTML = `<div class="empty">No video detected on this tab yet.<br>
       Start playing a video, then reopen this popup.</div>`;
     return;
   }
+  const stored = await SG_QUALITY.recall();
   listEl.innerHTML = items.map((it, i) => {
     const tag = streamTag(it);
     const btn = it.noDownload
@@ -47,15 +59,22 @@ function render(items) {
         <div class="n" title="${esc(it.name)}">${esc(it.name)}</div>
         <div class="s">${esc(tag)}</div>
       </div>
+      ${qualitySelect(it, i, stored)}
       ${btn}
     </div>`;
   }).join('');
 
+  listEl.querySelectorAll('select.q').forEach((sel) => {
+    sel.addEventListener('change', () => SG_QUALITY.remember(sel.value));
+  });
+
   listEl.querySelectorAll('button[data-i]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const it = items[Number(btn.dataset.i)];
+      const sel = listEl.querySelector(`select.q[data-q="${btn.dataset.i}"]`);
+      const quality = SG_QUALITY.parse(sel ? sel.value : 'best');
       btn.textContent = 'Sending…';
-      chrome.runtime.sendMessage({ type: 'download', item: it }, (res) => {
+      chrome.runtime.sendMessage({ type: 'download', item: it, quality }, (res) => {
         btn.textContent = res && res.ok ? 'Sent ✓' : 'Failed';
         setTimeout(() => { btn.textContent = 'Download'; }, 2000);
         if (res) setConn(res.ok);

@@ -218,17 +218,17 @@ app.whenReady().then(async () => {
 });
 
 function publicItem(item) {
-  const { id, url, title, kind, state, percent, speed, eta, size, filepath, error } = item;
-  return { id, url, title, kind, state, percent, speed, eta, size, filepath, error };
+  const { id, url, title, kind, state, percent, speed, eta, size, filepath, error, formatLabel } = item;
+  return { id, url, title, kind, state, percent, speed, eta, size, filepath, error, formatLabel };
 }
 
 // ---- IPC from the renderer -------------------------------------------------
 
 ipcMain.handle('queue:get', () => queue.snapshot());
 
-ipcMain.handle('download:add', (_e, url) => {
+ipcMain.handle('download:add', (_e, url, quality) => {
   if (!url || typeof url !== 'string') return { ok: false, error: 'No URL' };
-  const item = queue.add({ url, kind: 'auto', pageUrl: url });
+  const item = queue.add({ url, kind: 'auto', pageUrl: url, quality: quality || null });
   broadcastQueue();
   return { ok: true, id: item.id };
 });

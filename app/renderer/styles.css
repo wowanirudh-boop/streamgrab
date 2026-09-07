@@ -44,6 +44,12 @@ body {
   outline: none;
 }
 .add input:focus { border-color: var(--accent); }
+.add select {
+  background: var(--panel, #1b202b); color: var(--text); border: 1px solid var(--line);
+  border-radius: 8px; padding: 0 8px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.add select:focus { outline: none; border-color: var(--accent); }
+.c-kind .fmt { color: var(--muted); font-size: 11px; margin-top: 3px; }
 button {
   background: var(--accent);
   color: #fff;

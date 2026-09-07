@@ -1,9 +1,9 @@
 # PRD — StreamGrab
 
 **Working name:** StreamGrab
-**Version:** 1.1 — V1 work started (list clear, persistence, tools bundled)
+**Version:** 1.3 — quality picker shipped; detection and download hardening
 **Author:** Anirudh (with Claude)
-**Date:** 2026-09-07 (v1.0 · v1.1)
+**Date:** 2026-09-07 (v1.0 · v1.1) · 2026-09-08 (v1.2 · v1.3)
 
 > This PRD was written *after* the MVP was built and used, not before. So the
 > "MVP" section below describes what already exists and works, and the V1/V2
@@ -182,12 +182,17 @@ capability — not raw speed — is what actually decides whether a download wor
 - Sort/filter the list (active first; filter by state).
 
 **F7 — Quality & track selection.**
-- Surface HLS/DASH **variants** in the popup/overlay so the user picks a
-  resolution instead of yt-dlp guessing. (The variant URL is already captured in
-  the background worker; this exposes it in the UI.)
+- ✅ **Resolution picker** *(built v1.3)* in the overlay, the popup and the
+  app's paste box. HLS masters and DASH manifests list the heights they
+  actually offer ("Best (1080p) · 1080p HD · 720p · 480p …"); page-level sites
+  get the standard ladder and yt-dlp takes the best format at or below the
+  chosen height. The choice is remembered as the default for the next video.
+  Selection goes through yt-dlp's format selector on the master/manifest URL,
+  so audio pairing and muxing keep working (a bare variant playlist would
+  lose the separate audio rendition).
+- ✅ **Audio only** *(built v1.3)*: extracts to `.m4a` via ffmpeg.
 - Choose **audio language** and **subtitle** tracks; mux the chosen tracks into
-  the output with ffmpeg.
-- A per-download "audio only" option (extract to m4a/mp3).
+  the output with ffmpeg. *(open)*
 
 **F8 — Session-aware auth (make login-gated streams reliable).**
 - Optionally read cookies directly from the browser profile
@@ -299,11 +304,16 @@ monitoring, and batch URL import.
 | Phase | Ships | Definition of done |
 |---|---|---|
 | **MVP** | Built | Detect + handoff + download + list, verified against real HLS/DASH/progressive and yt-dlp sites |
-| **V1** | In progress | ✅ List clear · ✅ persistence · ✅ aria2+ffprobe bundled · ⬜ quality/track picker · ⬜ reliable auth · ⬜ settings UI · ⬜ pause/resume |
+| **V1** | In progress | ✅ List clear · ✅ persistence · ✅ aria2+ffprobe bundled · ✅ quality picker + audio-only · ⬜ audio/subtitle tracks · ⬜ reliable auth · ⬜ settings UI · ⬜ pause/resume |
 | **V2** | Later | blob:/MSE, live recording, post-processing, scheduler/bandwidth, torrent, convenience features |
 
 ## 13. Revision Log
 
+- **v1.3 (2026-09-08)** — Quality picker (F7) in overlay, popup and app paste
+  box: real ladder from HLS/DASH manifests, standard ladder for page sites,
+  audio-only extraction, last choice remembered. Also from the VK report:
+  per-job temp folders so failed attempts cannot poison retries; aria2c
+  progress parsed so the UI no longer sits at 0%; iterative queue pump.
 - **v1.2 (2026-09-08)** — Detection hardening after a real site report.
   Detections persist across service-worker restarts; playlists are recognised
   by broader content-types, by `m3u8`/`.mpd` anywhere in the URL, and by

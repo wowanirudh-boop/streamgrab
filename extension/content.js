@@ -112,6 +112,17 @@ function render() {
   startFsPoll();
 }
 
+let storedQuality = 'best';
+try { SG_QUALITY.recall().then((v) => { storedQuality = v; }); } catch {}
+
+function qualitySelect(it, i) {
+  if (it.noDownload || (it.heights && it.heights[0] === -1)) return '';
+  const opts = SG_QUALITY.options(it.heights || []);
+  const sel = SG_QUALITY.pick(storedQuality, opts);
+  return `<select class="sg-q" data-q="${i}" title="Quality">${opts.map((o) =>
+    `<option value="${o.value}"${o.value === sel ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`;
+}
+
 function renderList() {
   const list = panel.querySelector('.sg-list');
   list.hidden = !open;
@@ -128,20 +139,29 @@ function renderList() {
         <span class="sg-title" title="${escapeAttr(it.name)}">${escapeHtml(it.name)}</span>
         ${tag ? `<span class="sg-size">${escapeHtml(tag)}</span>` : ''}
       </div>
-      ${btn}
+      <div class="sg-act">${qualitySelect(it, i)}${btn}</div>
     </div>`;
   }).join('');
+
+  list.querySelectorAll('select.sg-q').forEach((sel) => {
+    sel.addEventListener('change', () => { storedQuality = sel.value; SG_QUALITY.remember(sel.value); });
+    // Keep the page's player from swallowing the clicks/keys on our select.
+    sel.addEventListener('click', (e) => e.stopPropagation());
+    sel.addEventListener('keydown', (e) => e.stopPropagation());
+  });
 
   list.querySelectorAll('.sg-dl[data-i]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const it = items[Number(btn.dataset.i)];
+      const sel = list.querySelector(`select.sg-q[data-q="${btn.dataset.i}"]`);
+      const quality = SG_QUALITY.parse(sel ? sel.value : 'best');
       // After the extension is reloaded/updated, scripts already injected into
       // open tabs are orphaned: chrome.runtime.id is gone and sendMessage throws
       // "Extension context invalidated". Tell the user instead of crashing.
       if (!chrome.runtime || !chrome.runtime.id) { orphaned(btn); return; }
       btn.textContent = 'Sending…';
       try {
-        chrome.runtime.sendMessage({ type: 'download', item: it }, (res) => {
+        chrome.runtime.sendMessage({ type: 'download', item: it, quality }, (res) => {
           if (chrome.runtime.lastError) { orphaned(btn); return; }
           btn.textContent = res && res.ok ? 'Sent ✓' : 'Open the app';
           btn.classList.toggle('sg-sent', !!(res && res.ok));

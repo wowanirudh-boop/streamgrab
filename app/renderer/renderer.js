@@ -50,7 +50,7 @@ function render(items) {
         <div class="suburl" title="${esc(it.pageUrl || it.url)}">${esc(it.pageUrl || it.url)}</div>
         ${it.state === 'error' ? `<div class="errmsg" title="${esc(it.error)}">${esc(it.error)}</div>` : ''}
       </td>
-      <td class="c-kind"><span class="badge ${kind}">${kind}</span></td>
+      <td class="c-kind"><span class="badge ${kind}">${kind}</span>${it.formatLabel ? `<div class="fmt">${esc(it.formatLabel)}</div>` : ''}</td>
       <td class="c-size">${fmtSize(it.size)}</td>
       <td class="c-prog">${statusCol}</td>
       <td class="c-speed">${esc(it.speed || (it.state === 'downloading' ? '…' : ''))}</td>
@@ -79,10 +79,16 @@ rowsEl.addEventListener('click', async (e) => {
   else if (act === 'folder') await window.sg.openFolder(id);
 });
 
+function parseQuality(v) {
+  if (v === 'audio') return { kind: 'audio' };
+  const m = /^h(\d+)$/.exec(v || '');
+  return m ? { kind: 'height', height: parseInt(m[1], 10) } : { kind: 'best' };
+}
+
 async function addUrl() {
   const url = urlInput.value.trim();
   if (!url) return;
-  await window.sg.addUrl(url);
+  await window.sg.addUrl(url, parseQuality(document.getElementById('quality').value));
   urlInput.value = '';
 }
 document.getElementById('addBtn').addEventListener('click', addUrl);

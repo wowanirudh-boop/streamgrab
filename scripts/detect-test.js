@@ -71,7 +71,7 @@ async function getJson(p) { return (await fetch(`http://127.0.0.1:${PORT}${p}`))
   const dump = `(async () => {
     const [tab] = await chrome.tabs.query({ url: 'https://hlsjs.video-dev.org/*' });
     const raw = (mediaByTab.get(tab.id) || []).map(i => ({ kind: i.kind, role: i.role, guessed: !!i.guessed, size: i.size, url: i.url.slice(-70) }));
-    const presented = (presentedByTab.get(tab.id) || []).map(i => ({ kind: i.kind, role: i.role, name: i.name, quality: i.quality, sizeText: i.sizeText, variants: i.variants.length, noDownload: !!i.noDownload }));
+    const presented = (presentedByTab.get(tab.id) || []).map(i => ({ kind: i.kind, role: i.role, name: i.name, quality: i.quality, sizeText: i.sizeText, variants: i.variants.length, noDownload: !!i.noDownload, heights: [...new Set(i.heights || [])].sort((a, b) => b - a) }));
     const stored = await chrome.storage.session.get('mediaByTab');
     const storedCount = Object.values(stored.mediaByTab || {}).reduce((a, l) => a + l.length, 0);
     return JSON.stringify({ tabId: tab.id, raw, presented, storedCount });
@@ -114,8 +114,10 @@ async function getJson(p) { return (await fetch(`http://127.0.0.1:${PORT}${p}`))
     ['no .mp4 fragments listed as videos', fragShown === 0],
     ['exactly one row for the whole video (audio/subtitle playlists collapsed)', before.presented.length === 1],
     ['playlist survives service-worker restart', !!masterAfter && masterAfter.variants > 0],
-    ['numbered siblings collapse to one PARTS row', col.length === 1 && col[0].role === 'segments' && col[0].noDownload]
+    ['numbered siblings collapse to one PARTS row', col.length === 1 && col[0].role === 'segments' && col[0].noDownload],
+    ['quality ladder exposed for the picker (heights from the master)', !!masterBefore && masterBefore.heights.length >= 3 && masterBefore.heights[0] === 1080]
   ];
+  if (masterBefore) console.log('\nheights offered to the picker:', masterBefore.heights.join(', '));
   console.log('\n=== RESULTS ===');
   let fail = 0;
   for (const [name, ok] of checks) { console.log(ok ? 'PASS' : 'FAIL', name); if (!ok) fail++; }

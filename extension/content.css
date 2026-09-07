@@ -77,6 +77,12 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px;
 }
 #streamgrab-overlay .sg-size { color: #8a93a6; font-size: 11px; }
+#streamgrab-overlay .sg-act { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+#streamgrab-overlay select.sg-q {
+  background: #232a38; color: #e6e9ef; border: 1px solid #2c3444; border-radius: 6px;
+  padding: 4px 4px; font: inherit; font-size: 12px; max-width: 110px; cursor: pointer;
+}
+#streamgrab-overlay select.sg-q:focus { outline: none; border-color: #4c8dff; }
 #streamgrab-overlay .sg-dl {
   background: #4c8dff; color: #fff; border: none; border-radius: 6px;
   padding: 5px 10px; cursor: pointer; font-weight: 600; white-space: nowrap;

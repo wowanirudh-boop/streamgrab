@@ -93,6 +93,9 @@ class Queue extends EventEmitter {
       keyQuery: payload.keyQuery || '',
       // HLS master listed variants as bare names (no query of their own).
       variantsNeedQuery: !!payload.variantsNeedQuery,
+      // Quality choice: {kind:'best'} | {kind:'height',height} | {kind:'audio'}
+      quality: normalizeQuality(payload.quality),
+      formatLabel: qualityLabel(normalizeQuality(payload.quality)),
       filename: payload.filename || null,
       pageUrl: payload.pageUrl || '',
       state: 'queued',     // queued | downloading | done | error | canceled
@@ -111,14 +114,15 @@ class Queue extends EventEmitter {
     return item;
   }
 
+  // Fill free slots with queued items. Iterative, and it stops if run() did
+  // not actually take the item, so it can never spin.
   pump() {
-    const active = [...this.runners.keys()].length;
-    if (active >= MAX_CONCURRENT) return;
-    const next = this.items.find((i) => i.state === 'queued');
-    if (!next) return;
-    this.run(next);
-    // Try to fill remaining slots.
-    if (this.runners.size < MAX_CONCURRENT) this.pump();
+    while (this.runners.size < MAX_CONCURRENT) {
+      const next = this.items.find((i) => i.state === 'queued');
+      if (!next) return;
+      this.run(next);
+      if (next.state === 'queued') return;
+    }
   }
 
   run(item) {
@@ -226,6 +230,16 @@ class Queue extends EventEmitter {
   snapshot() {
     return this.items.map((i) => ({ ...i, headers: undefined, fragmentHeaders: undefined }));
   }
+}
+
+function normalizeQuality(q) {
+  if (!q || typeof q !== 'object') return { kind: 'best' };
+  if (q.kind === 'audio') return { kind: 'audio' };
+  if (q.kind === 'height' && Number.isFinite(+q.height) && +q.height > 0) return { kind: 'height', height: Math.round(+q.height) };
+  return { kind: 'best' };
+}
+function qualityLabel(q) {
+  return q.kind === 'audio' ? 'Audio' : q.kind === 'height' ? `${q.height}p` : 'Best';
 }
 
 function guessTitle(url) {
