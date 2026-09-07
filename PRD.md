@@ -313,6 +313,15 @@ monitoring, and batch URL import.
   `EXT-X-MEDIA` audio/subtitle renditions fold into their master. Popup gains
   **copy report** for diagnosing sites. Also: overlay hides in fullscreen;
   release builds write no log file unless `--sg-debug`.
+- **v1.2.1 (2026-09-08)** — Download fix from the same report: yt-dlp's
+  `variant_query`/`fragment_query` were passed unconditionally and *merged the
+  manifest's query over each fragment's own signed query*, so on VK/okcdn
+  DASH every fragment URL became the manifest URL again (5,993-byte XML →
+  ffmpeg "invalid data"). Now never for DASH, and for HLS only when variants
+  were listed as bare names. Verified: the failing manifest downloads and
+  muxes to a 532 s MP4. VK Video added to page-level sites (yt-dlp's `vk`
+  extractor). Badges now say MP4 (what you get) with the protocol in the
+  subtitle; DASH manifests report their best height.
 - **v1.1 (2026-09-07)** — V1 started. Built: clear-completed / clear-all in the
   UI; queue persistence to `queue.json` with interrupted-download recovery;
   `fetch-tools` script bundling aria2c and a matching ffmpeg/ffprobe pair.

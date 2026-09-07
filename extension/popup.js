@@ -11,8 +11,14 @@ function showError(msg) {
   errEl.classList.add('show');
 }
 
+// The badge shows what you GET (an MP4), like IDM does; the stream protocol
+// (HLS/DASH) is shown in the small line under the name.
 function kindLabel(k) {
-  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
+  return k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
+}
+function streamTag(it) {
+  const proto = it.kind === 'hls' ? 'HLS stream' : it.kind === 'dash' ? 'DASH stream' : '';
+  return [it.quality, it.sizeText, proto].filter(Boolean).join(' · ');
 }
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g,
@@ -30,7 +36,7 @@ function render(items) {
     return;
   }
   listEl.innerHTML = items.map((it, i) => {
-    const tag = it.quality || it.sizeText || '';
+    const tag = streamTag(it);
     const btn = it.noDownload
       ? `<button class="off" disabled title="${esc(it.hint || '')}">Parts only</button>`
       : `<button data-i="${i}">Download</button>`;

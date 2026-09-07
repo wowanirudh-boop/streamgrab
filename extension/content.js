@@ -59,8 +59,13 @@ function ensurePanel() {
   return panel;
 }
 
+// The badge shows what you GET (an MP4); the stream protocol goes in the tag.
 function kindLabel(k) {
-  return k === 'hls' ? 'HLS' : k === 'dash' ? 'DASH' : k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
+  return k === 'page' ? 'VIDEO' : k === 'segments' ? 'PARTS' : 'MP4';
+}
+function streamTag(it) {
+  const proto = it.kind === 'hls' ? 'HLS' : it.kind === 'dash' ? 'DASH' : '';
+  return [it.quality, it.sizeText, proto].filter(Boolean).join(' · ');
 }
 
 function render() {
@@ -81,7 +86,7 @@ function renderList() {
   list.hidden = !open;
   if (!open) return;
   list.innerHTML = items.map((it, i) => {
-    const tag = it.quality ? it.quality : it.sizeText ? it.sizeText : '';
+    const tag = streamTag(it);
     const btn = it.noDownload
       ? `<button class="sg-dl sg-off" disabled title="${escapeAttr(it.hint || '')}">Parts only</button>`
       : `<button class="sg-dl" data-i="${i}">Download</button>`;

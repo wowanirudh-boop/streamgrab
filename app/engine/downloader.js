@@ -89,15 +89,25 @@ class Downloader extends EventEmitter {
 
     // Signed CDN streams (CloudFront Policy/Signature, Sprout Video, Vimeo…) keep
     // credentials in query strings while manifests list variants and segments
-    // as bare relative names. Carry the manifest's query to variant playlists,
-    // and give fragments / AES keys whatever query the page's own player used
-    // (sampled by the extension), falling back to the manifest's query.
-    const ea = ['variant_query'];
+    // as bare relative names. Only then carry the manifest's query to variant
+    // playlists and segments. yt-dlp's variant_query/fragment_query MERGE the
+    // manifest's params over the fragment's own, so on manifests whose
+    // fragments already carry their own signed query (VK/okcdn DASH: BaseURL
+    // "?type=5&sig=…") they would overwrite it and re-download the manifest
+    // instead of media. So: never for DASH, and for HLS only when the
+    // extension saw variants without a query of their own.
+    const ea = [];
+    const isDash = this.item.kind === 'dash' || /\.mpd(\?|#|$)/i.test(this.item.url);
+    const bare = !isDash && !!this.item.variantsNeedQuery;
+    if (bare) ea.push('variant_query');
+    // Fragments / AES keys: whatever query the page's own player used
+    // (sampled by the extension) wins; otherwise inherit only in the bare case.
     const fq = cleanQuery(this.item.fragmentQuery);
-    ea.push(fq ? `fragment_query=${fq}` : 'fragment_query');
+    if (fq) ea.push(`fragment_query=${fq}`);
+    else if (bare) ea.push('fragment_query');
     const kq = cleanQuery(this.item.keyQuery);
     if (kq) ea.push(`key_query=${kq}`);
-    args.push('--extractor-args', `generic:${ea.join(';')}`);
+    if (ea.length) args.push('--extractor-args', `generic:${ea.join(';')}`);
 
     // Replay the exact request context the browser used. If the player sent
     // cookies with segments but not with the manifest, use those.

@@ -38,7 +38,9 @@ const SITE_PATTERNS = [
   /https?:\/\/(twitter|x)\.com\/[^/]+\/status\//i,
   /https?:\/\/(www\.)?tiktok\.com\/@[^/]+\/video\//i,
   /https?:\/\/(www\.)?facebook\.com\/.*\/videos?\//i,
-  /https?:\/\/(www\.)?instagram\.com\/(reel|p|tv)\//i
+  /https?:\/\/(www\.)?instagram\.com\/(reel|p|tv)\//i,
+  // VK Video: signed okcdn DASH/HLS; yt-dlp's vk extractor handles the page.
+  /https?:\/\/(www\.|m\.)?(vk\.com|vkvideo\.ru|vk\.ru)\/(video-?\d+_\d+|clip-?\d+_\d+)/i
 ];
 function matchesSite(url) { return SITE_PATTERNS.some((re) => re.test(url)); }
 function siteName(url) {
@@ -50,6 +52,7 @@ function siteName(url) {
   if (/tiktok\.com/i.test(url)) return 'TikTok';
   if (/facebook\.com/i.test(url)) return 'Facebook';
   if (/instagram\.com/i.test(url)) return 'Instagram';
+  if (/vk\.com|vkvideo\.ru|vk\.ru/i.test(url)) return 'VK';
   return 'Video';
 }
 
@@ -354,7 +357,13 @@ async function record(details, kind, contentType, size, guessed = false) {
   // Guessed candidates are not shown until the body confirms them.
   if (!guessed) refresh(tabId); else persist();
 
-  if (kind === 'hls' || (kind === 'dash' && guessed)) classifyManifest(item, tabId);
+  if (kind === 'hls' || kind === 'dash') classifyManifest(item, tabId);
+}
+
+// Best height listed in a DASH MPD (Representation height="…" / maxHeight).
+function dashResolution(text) {
+  const hs = [...text.matchAll(/(?:maxHeight|height)="(\d+)"/gi)].map((m) => parseInt(m[1], 10)).filter(Boolean);
+  return hs.length ? `${Math.max(...hs)}p` : '';
 }
 
 // Fetch a playlist and decide master vs variant (HLS), or confirm a guessed
@@ -373,13 +382,21 @@ async function classifyManifest(item, tabId) {
   }
   const head = text.slice(0, 4096);
   if (item.kind === 'dash') {
-    if (!/<MPD[\s>]/i.test(head)) { dropItem(tabId, item); refresh(tabId); return; }
+    if (!/<MPD[\s>]/i.test(head)) {
+      if (item.guessed) dropItem(tabId, item);   // a real .mpd we couldn't read stays listed
+      refresh(tabId);
+      return;
+    }
+    item.resolution = dashResolution(text);
     item.guessed = false;
   } else if (/#EXT-X-STREAM-INF/i.test(text)) {
     item.role = 'master';
     item.variants = parseMaster(text, item.url);
     item.renditions = parseRenditions(text, item.url);
     item.resolution = bestResolution(item.variants);
+    // Variants listed as bare names need the manifest's (signed) query carried
+    // over; variants with their own query must be left alone (see downloader).
+    item.variantsNeedQuery = item.variants.some((v) => v.inherited);
     item.guessed = false;
   } else if (/#EXTINF/i.test(text)) {
     item.role = 'media';
@@ -408,16 +425,17 @@ function parseMaster(text, baseUrl) {
       let j = i + 1;
       while (j < lines.length && (!lines[j].trim() || lines[j].trim().startsWith('#'))) j++;
       let abs = lines[j] ? lines[j].trim() : '';
+      let inherited = false;
       try {
         const u = new URL(abs, baseUrl);
         // Signed manifests (CloudFront Policy/Signature…) keep their credentials
         // in the query string; relative variant names must inherit it, as the
         // page's player does.
         const base = new URL(baseUrl);
-        if (!u.search && base.search && u.origin === base.origin) u.search = base.search;
+        if (!u.search && base.search && u.origin === base.origin) { u.search = base.search; inherited = true; }
         abs = u.href;
       } catch {}
-      out.push({ resolution: res, bandwidth: bw, url: abs, height: res ? parseInt(res.split('x')[1], 10) : 0 });
+      out.push({ resolution: res, bandwidth: bw, url: abs, height: res ? parseInt(res.split('x')[1], 10) : 0, inherited });
     }
   }
   return out;
@@ -590,7 +608,8 @@ function toDisplay(it) {
     // How the page's player authorizes segments / AES keys (see sampleFragment).
     fragmentQuery: it.fragmentSample ? it.fragmentSample.query : '',
     fragmentHeaders: it.fragmentSample ? it.fragmentSample.headers : null,
-    keyQuery: it.keySample ? it.keySample.query : ''
+    keyQuery: it.keySample ? it.keySample.query : '',
+    variantsNeedQuery: !!it.variantsNeedQuery
   };
 }
 
@@ -699,7 +718,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         size: 0,
         fragmentQuery: it.fragmentQuery || '',
         fragmentHeaders: it.fragmentHeaders || null,
-        keyQuery: it.keyQuery || ''
+        keyQuery: it.keyQuery || '',
+        variantsNeedQuery: !!it.variantsNeedQuery
       });
       sendResponse({ ok: sent });
     });

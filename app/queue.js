@@ -91,6 +91,8 @@ class Queue extends EventEmitter {
       fragmentQuery: payload.fragmentQuery || '',
       fragmentHeaders: payload.fragmentHeaders || null,
       keyQuery: payload.keyQuery || '',
+      // HLS master listed variants as bare names (no query of their own).
+      variantsNeedQuery: !!payload.variantsNeedQuery,
       filename: payload.filename || null,
       pageUrl: payload.pageUrl || '',
       state: 'queued',     // queued | downloading | done | error | canceled
