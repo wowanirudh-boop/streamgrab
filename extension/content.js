@@ -16,17 +16,47 @@ const FS_PEEK_MS = 2500;
 let peekTimer = null;
 let hovering = false;
 
-function isFullscreen() {
-  return !!(document.fullscreenElement || document.webkitFullscreenElement);
+// Two ways a player goes "fullscreen": the Fullscreen API (fires
+// fullscreenchange) or CSS alone — the player pins itself over the whole
+// viewport and no event fires at all. Cover both: API state, or a <video> /
+// embedded player <iframe> whose box fills (nearly) the viewport. The latter
+// is re-checked on resize and on a light poll while the pill is showing.
+function playerCoversViewport() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if (!vw || !vh) return false;
+  for (const el of document.querySelectorAll('video, iframe')) {
+    const r = el.getBoundingClientRect();
+    if (r.width >= vw * 0.9 && r.height >= vh * 0.8) return true;
+  }
+  return false;
 }
 
+function isFullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+  return playerCoversViewport();
+}
+
+let lastFs = false;
 function applyFullscreen() {
   if (!panel) return;
   const fs = isFullscreen();
   panel.classList.toggle('sg-fs', fs);
   panel.classList.toggle('sg-open', open);
   if (!fs) { panel.classList.remove('sg-peek'); clearTimeout(peekTimer); }
+  lastFs = fs;
 }
+
+// CSS-only fullscreen has no event: poll cheaply (one rect read per video)
+// while the pill is on screen, and re-check on resize.
+let fsPoll = null;
+function startFsPoll() {
+  if (fsPoll) return;
+  fsPoll = setInterval(() => {
+    if (!panel || !items.length) { clearInterval(fsPoll); fsPoll = null; return; }
+    if (isFullscreen() !== lastFs) applyFullscreen();
+  }, 1000);
+}
+window.addEventListener('resize', () => { if (panel) applyFullscreen(); }, { passive: true });
 
 function peek() {
   if (!panel || !isFullscreen() || !items.length) return;
@@ -79,6 +109,7 @@ function render() {
   panel.querySelector('.sg-word').textContent = items.length === 1 ? ' video' : ' videos';
   renderList();
   applyFullscreen();
+  startFsPoll();
 }
 
 function renderList() {

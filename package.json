@@ -15,7 +15,8 @@
     "dist": "electron-builder --win",
     "predebug": "node scripts/build-host.js",
     "debug": "electron . --sg-debug",
-    "test-detect": "node scripts/detect-test.js"
+    "test-detect": "node scripts/detect-test.js",
+    "test-overlay": "node scripts/overlay-test.js"
   },
   "devDependencies": {
     "electron": "^32.2.0",
