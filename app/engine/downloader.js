@@ -32,6 +32,16 @@ const PROG_TEMPLATE =
   `%(progress._eta_str)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|` +
   `%(progress.total_bytes_estimate)s`;
 
+// [#gid 129MiB/291MiB(44%) CN:16 DL:3.5MiB ETA:45s]  (ETA absent when done)
+const ARIA_PROG = /\[#[0-9a-f]+\s+([\d.]+[KMGT]?i?B)\/([\d.]+[KMGT]?i?B)\((\d+)%\)(?:.*?DL:([\d.]+[KMGT]?i?B))?(?:.*?ETA:(\S+?))?\]/i;
+
+function parseSize(s) {
+  const m = String(s || '').match(/([\d.]+)\s*([KMGT]?)i?B/i);
+  if (!m) return 0;
+  const mult = { '': 1, K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 }[m[2].toUpperCase()] || 1;
+  return Math.round(parseFloat(m[1]) * mult);
+}
+
 function resolveBin(name) {
   const exe = IS_WIN ? `${name}.exe` : name;
   const local = path.join(BIN_DIR, exe);
@@ -229,6 +239,24 @@ class Downloader extends EventEmitter {
           eta: clean(eta),
           downloaded: num(done),
           size: totalBytes || this.item.size || 0
+        });
+        continue;
+      }
+
+      // aria2c (external downloader) prints its own progress, e.g.
+      //   [#93de20 129MiB/291MiB(44%) CN:16 DL:3.5MiB ETA:45s]
+      // yt-dlp's template is not applied to it, so parse it here. Otherwise
+      // the UI sits at 0% for the whole transfer.
+      const a = l.match(ARIA_PROG);
+      if (a) {
+        const downloaded = parseSize(a[1]);
+        const size = parseSize(a[2]);
+        this.emit('progress', {
+          percent: parseInt(a[3], 10) || (size ? Math.min(100, (downloaded / size) * 100) : 0),
+          speed: a[4] ? `${a[4]}/s` : '',
+          eta: a[5] || '',
+          downloaded,
+          size: size || this.item.size || 0
         });
         continue;
       }
