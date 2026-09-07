@@ -2,21 +2,83 @@
 
 // Download queue + engine manager. Holds the list of jobs the UI renders,
 // runs up to MAX_CONCURRENT at a time, and re-emits engine events as queue
-// updates. Kept intentionally small; persistence/pause-resume are v2.
+// updates. The list is persisted to disk (queue.json) so history survives an
+// app restart; pause/resume is still v2.
 
 const { EventEmitter } = require('events');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Downloader } = require('./engine/downloader');
 
 const MAX_CONCURRENT = 3;
+const MAX_PERSISTED = 500;   // keep the newest N rows on disk
+const SAVE_DEBOUNCE_MS = 500;
+const INTERRUPTED_MSG = 'Interrupted when StreamGrab closed — Retry to resume';
 
 class Queue extends EventEmitter {
-  constructor({ getSettings }) {
+  constructor({ getSettings, persistPath = null }) {
     super();
     this.getSettings = getSettings;
+    this.persistPath = persistPath;
     this.items = [];      // ordered list of jobs
     this.runners = new Map(); // id -> Downloader
+    this._saveTimer = null;
+    // Every queue change is broadcast as 'update'; piggyback the save on it.
+    this.on('update', () => this.scheduleSave());
   }
+
+  // ---- persistence ---------------------------------------------------------
+
+  // Restore the list from disk. Anything that was queued or mid-download when
+  // the app last exited is shown as interrupted with a Retry (yt-dlp resumes
+  // partial files by default), rather than silently restarting downloads on
+  // what may be a hidden autostart.
+  load() {
+    if (!this.persistPath) return 0;
+    let raw;
+    try { raw = JSON.parse(fs.readFileSync(this.persistPath, 'utf8')); }
+    catch { return 0; }
+    const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.items) ? raw.items : []);
+    this.items = list
+      .filter((i) => i && typeof i.id === 'string' && typeof i.url === 'string')
+      .slice(0, MAX_PERSISTED)
+      .map((i) => {
+        const it = { ...i, speed: '', eta: '' };
+        if (it.state === 'queued' || it.state === 'downloading') {
+          it.state = 'error';
+          it.error = INTERRUPTED_MSG;
+        }
+        return it;
+      });
+    return this.items.length;
+  }
+
+  scheduleSave() {
+    if (!this.persistPath) return;
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this.flush(), SAVE_DEBOUNCE_MS);
+  }
+
+  // Write now (atomically: tmp file + rename). Called on quit and by the
+  // debounced scheduleSave().
+  flush() {
+    if (!this.persistPath) return;
+    clearTimeout(this._saveTimer);
+    this._saveTimer = null;
+    const data = { version: 1, savedAt: Date.now(), items: this.items.slice(0, MAX_PERSISTED) };
+    const tmp = this.persistPath + '.tmp';
+    try {
+      fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
+      fs.writeFileSync(tmp, JSON.stringify(data));
+      fs.renameSync(tmp, this.persistPath);
+    } catch (e) {
+      console.warn('[queue] could not persist queue:', e.message);
+      try { fs.unlinkSync(tmp); } catch {}
+    }
+  }
+
+  // ---- jobs ----------------------------------------------------------------
 
   add(payload) {
     const item = {
@@ -43,6 +105,7 @@ class Queue extends EventEmitter {
     };
     this.items.unshift(item);
     this.pump();
+    this.scheduleSave();
     return item;
   }
 
@@ -110,6 +173,7 @@ class Queue extends EventEmitter {
     const item = this.get(id);
     if (item && item.state !== 'done') item.state = 'canceled';
     this.pump();
+    this.scheduleSave();
   }
 
   retry(id) {
@@ -119,11 +183,13 @@ class Queue extends EventEmitter {
     item.error = null;
     item.percent = 0;
     this.pump();
+    this.scheduleSave();
   }
 
   remove(id) {
     this.cancel(id);
     this.items = this.items.filter((i) => i.id !== id);
+    this.scheduleSave();
   }
 
   // Bulk clear. which='completed' drops finished rows (done/error/canceled) and
@@ -144,6 +210,7 @@ class Queue extends EventEmitter {
     const removeIds = new Set(toRemove.map((i) => i.id));
     this.items = this.items.filter((i) => !removeIds.has(i.id));
     this.pump();
+    this.scheduleSave();
     return toRemove.length;
   }
 

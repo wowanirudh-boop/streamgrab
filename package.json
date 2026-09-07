@@ -8,6 +8,7 @@
     "start": "electron .",
     "prestart": "node scripts/build-host.js",
     "build-host": "node scripts/build-host.js",
+    "fetch-tools": "node scripts/fetch-tools.js",
     "build-store": "node scripts/build-store.js",
     "uninstall-host": "node scripts/uninstall-native-host.js",
     "predist": "node scripts/build-host.js",

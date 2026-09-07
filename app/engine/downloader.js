@@ -134,7 +134,8 @@ class Downloader extends EventEmitter {
     this.emit('state', 'downloading');
 
     log.info(tag, 'start', this.item.kind, this.item.url);
-    log.info(tag, 'exe', bin, 'ffmpeg', hasBin('ffmpeg') ? 'bundled' : 'PATH', 'aria2c', hasBin('aria2c') ? 'bundled' : 'no');
+    log.info(tag, 'exe', bin, 'ffmpeg', hasBin('ffmpeg') ? 'bundled' : 'PATH',
+      'ffprobe', hasBin('ffprobe') ? 'bundled' : 'no', 'aria2c', hasBin('aria2c') ? 'bundled' : 'no');
     log.debug(tag, 'args', JSON.stringify(args));
     if (!fs.existsSync(bin) && !/[\\/]/.test(bin)) log.warn(tag, 'yt-dlp not in bin/, relying on PATH');
 

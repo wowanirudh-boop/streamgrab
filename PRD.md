@@ -1,9 +1,9 @@
 # PRD — StreamGrab
 
 **Working name:** StreamGrab
-**Version:** 1.0 — written after the MVP shipped and was used against real streams
+**Version:** 1.1 — V1 work started (list clear, persistence, tools bundled)
 **Author:** Anirudh (with Claude)
-**Date:** 2026-09-07
+**Date:** 2026-09-07 (v1.0 · v1.1)
 
 > This PRD was written *after* the MVP was built and used, not before. So the
 > "MVP" section below describes what already exists and works, and the V1/V2
@@ -170,11 +170,15 @@ capability — not raw speed — is what actually decides whether a download wor
 ### V1 (next — close the obvious gaps, start beating IDM)
 
 **F6 — List management & persistence.** *(includes the named usability fix)*
-- **Clear the list from the UI**: a "Clear completed" action (removes done /
-  error / canceled rows) and a "Clear all" action (cancels any active downloads
-  first, then empties the list), with a confirm on clear-all.
-- **Persist the queue** to disk (`%APPDATA%\StreamGrab\queue.json`) so the list —
-  including completed history — survives an app restart.
+- ✅ **Clear the list from the UI** *(built v1.1)*: "Clear completed" removes
+  done / error / canceled rows and shows the count; "Clear all" cancels active
+  downloads first, then empties the list, behind a confirm.
+- ✅ **Persist the queue** *(built v1.1)* to `%APPDATA%\StreamGrab\queue.json`
+  (debounced, atomic write; flushed on quit; newest 500 rows kept). The list —
+  including completed history — survives an app restart. Downloads that were
+  in flight at shutdown reappear as *Interrupted* with a **Retry**, which
+  resumes the partial file; they are deliberately not auto-restarted on what
+  may be a hidden autostart at login.
 - Sort/filter the list (active first; filter by state).
 
 **F7 — Quality & track selection.**
@@ -270,9 +274,10 @@ monitoring, and batch URL import.
 
 ## 11. Risks & Open Questions
 
-- **aria2 not bundled today.** The engine supports it but `bin/aria2c.exe` is
-  absent, so the "speed parity" claim is currently unrealized. *Action:* bundle
-  `aria2c.exe` (and `ffprobe.exe`, which yt-dlp warns is missing for metadata).
+- ~~**aria2 not bundled today.**~~ *Resolved v1.1:* `npm run fetch-tools`
+  (`scripts/fetch-tools.js`) pulls yt-dlp, aria2c 1.37.0, and a matching
+  ffmpeg + ffprobe pair from their official sources into `bin/`; the installer
+  ships them. Multi-connection direct-file downloads are now real.
 - **MV3 service-worker eviction** can drop the per-tab detection list. *Action:*
   persist detections to `chrome.storage.session` (noted in README limitations).
 - **Cookie DB locking on Windows** when Chrome is running makes
@@ -290,11 +295,15 @@ monitoring, and batch URL import.
 | Phase | Ships | Definition of done |
 |---|---|---|
 | **MVP** | Built | Detect + handoff + download + list, verified against real HLS/DASH/progressive and yt-dlp sites |
-| **V1** | Next | List clear + persistence, quality/track picker, reliable auth, settings UI, pause/resume; aria2+ffprobe bundled |
+| **V1** | In progress | ✅ List clear · ✅ persistence · ✅ aria2+ffprobe bundled · ⬜ quality/track picker · ⬜ reliable auth · ⬜ settings UI · ⬜ pause/resume |
 | **V2** | Later | blob:/MSE, live recording, post-processing, scheduler/bandwidth, torrent, convenience features |
 
 ## 13. Revision Log
 
+- **v1.1 (2026-09-07)** — V1 started. Built: clear-completed / clear-all in the
+  UI; queue persistence to `queue.json` with interrupted-download recovery;
+  `fetch-tools` script bundling aria2c and a matching ffmpeg/ffprobe pair.
+  §11 aria2 risk closed.
 - **v1.0 (2026-09-07)** — First PRD, written after the MVP shipped. Documents the
   built MVP as-is; sets DRM permanently out of scope; frames V1/V2 around
   out-capability-ing IDM where speed is not the deciding factor. Names the

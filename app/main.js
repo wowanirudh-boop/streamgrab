@@ -174,7 +174,12 @@ app.whenReady().then(async () => {
   applyLoginItem();
   registerHost();
 
-  queue = new Queue({ getSettings: () => settings });
+  queue = new Queue({
+    getSettings: () => settings,
+    persistPath: path.join(app.getPath('userData'), 'queue.json')
+  });
+  const restored = queue.load();
+  if (restored) log.info('[queue] restored', restored, 'item(s) from queue.json');
   queue.on('update', () => broadcastQueue());
   queue.on('progress', (item) => forwardToExtension('progress', publicItem(item)));
   queue.on('done', (item) => forwardToExtension('done', publicItem(item)));
@@ -271,4 +276,8 @@ ipcMain.handle('log:open', () => { shell.openPath(log.path()); return { ok: true
 
 // Stay resident when the last window closes (see tray "Quit").
 app.on('window-all-closed', () => {});
-app.on('before-quit', () => { quitting = true; if (bridge) bridge.stop(); });
+app.on('before-quit', () => {
+  quitting = true;
+  if (queue) queue.flush();
+  if (bridge) bridge.stop();
+});

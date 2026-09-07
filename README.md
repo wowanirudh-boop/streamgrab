@@ -38,7 +38,8 @@ Electron desktop app that downloads it fast with **yt-dlp + aria2 + ffmpeg**.
 
 ### 1. Prereqs
 - [Node.js](https://nodejs.org/) 18+ (only for developing; end users need nothing).
-- Put `yt-dlp.exe`, `ffmpeg.exe` (and optionally `aria2c.exe`) in [`bin/`](bin/README.md).
+- Run `npm run fetch-tools` to download `yt-dlp`, `ffmpeg`, `ffprobe` and `aria2c`
+  into [`bin/`](bin/README.md) from their official sources.
 
 ### 2. Start the app
 ```bash
