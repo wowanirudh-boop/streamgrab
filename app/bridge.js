@@ -123,7 +123,15 @@ class Bridge extends EventEmitter {
 
   stop() {
     try { this.server && this.server.close(); } catch {}
-    try { fs.unlinkSync(this.configPath); } catch {}
+    // Keep the file, minus the live connection details: the native host reads
+    // exe/args from it to START the app when the extension connects. Deleting
+    // it on quit left the host with "no app executable known" and Download
+    // clicks silently did nothing until the app was launched by hand.
+    try {
+      fs.writeFileSync(this.configPath, JSON.stringify({
+        port: 0, token: '', pid: 0, exe: this.launch.exe, args: this.launch.args
+      }, null, 2));
+    } catch {}
   }
 }
 

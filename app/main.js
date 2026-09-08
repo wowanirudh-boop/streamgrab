@@ -7,6 +7,7 @@ const fs = require('fs');
 const { Bridge } = require('./bridge');
 const { Queue } = require('./queue');
 const { registerNativeHost } = require('./host-registration');
+const { resolvePrintedPath } = require('./engine/downloader');
 
 // Same userData folder (%APPDATA%\StreamGrab) in dev and packaged builds, so the
 // native host always knows where bridge.json lives.
@@ -240,6 +241,12 @@ ipcMain.handle('download:clear', (_e, which) => { const n = queue.clear(which); 
 
 ipcMain.handle('item:open-folder', (_e, id) => {
   const item = queue.get(id);
+  // Paths saved by earlier versions may carry U+FFFD where yt-dlp's cp1252
+  // output was mis-decoded; repair them in place so the file is found.
+  if (item && item.filepath && !fs.existsSync(item.filepath)) {
+    const fixed = resolvePrintedPath(item.filepath);
+    if (fixed !== item.filepath && fs.existsSync(fixed)) { item.filepath = fixed; queue.scheduleSave(); }
+  }
   if (item && item.filepath && fs.existsSync(item.filepath)) {
     shell.showItemInFolder(item.filepath);
     return { ok: true };

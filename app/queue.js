@@ -14,6 +14,7 @@ const { Downloader, removeTmp } = require('./engine/downloader');
 const MAX_CONCURRENT = 3;
 const MAX_PERSISTED = 500;   // keep the newest N rows on disk
 const SAVE_DEBOUNCE_MS = 500;
+const PROGRESS_INTERVAL_MS = 250;   // UI/overlay progress fan-out cadence per item
 const INTERRUPTED_MSG = 'Interrupted when StreamGrab closed — Retry to resume';
 
 class Queue extends EventEmitter {
@@ -130,14 +131,24 @@ class Queue extends EventEmitter {
     const runner = new Downloader(item, this.getSettings());
     this.runners.set(item.id, runner);
 
+    // yt-dlp with concurrent fragments prints progress hundreds of times a
+    // second. Fold that into at most one progress/update pair per item every
+    // PROGRESS_INTERVAL_MS (trailing edge, so the last value always lands);
+    // the window and the extension's overlay cannot use more than that.
+    let progressTimer = null;
     runner.on('progress', (p) => {
       item.percent = p.percent;
       item.speed = p.speed;
       item.eta = p.eta;
       item.downloaded = p.downloaded;
       if (p.size) item.size = p.size;
-      this.emit('progress', item);
-      this.emit('update');
+      if (progressTimer) return;
+      progressTimer = setTimeout(() => {
+        progressTimer = null;
+        if (item.state !== 'downloading') return; // completed/failed already announced
+        this.emit('progress', item);
+        this.emit('update');
+      }, PROGRESS_INTERVAL_MS);
     });
 
     runner.on('completed', (filepath) => {

@@ -18,46 +18,87 @@ function esc(s) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+// One row = seven cells. Returned as [className, innerHTML] pairs so render()
+// can update only the cells whose content changed.
+function rowCells(it) {
+  const kind = it.kind === 'auto' ? 'progressive' : it.kind;
+  const barCls = ['bar'];
+  if (it.state === 'done') barCls.push('done');
+  else if (it.state === 'error') barCls.push('error');
+  else if (it.state === 'canceled') barCls.push('canceled');
+
+  let statusCol;
+  if (it.state === 'error') statusCol = `<span class="state-error" title="${esc(it.error)}">Failed</span>`;
+  else if (it.state === 'done') statusCol = `<span class="state-done">Done</span>`;
+  else if (it.state === 'canceled') statusCol = `<span class="state-canceled">Canceled</span>`;
+  else statusCol = `<div class="${barCls.join(' ')}"><span style="width:${it.percent || 0}%"></span></div>
+                    <div class="pct">${(it.percent || 0).toFixed(0)}%</div>`;
+
+  const actions = [];
+  if (it.state === 'downloading' || it.state === 'queued')
+    actions.push(`<button data-act="cancel" data-id="${it.id}">Stop</button>`);
+  if (it.state === 'error' || it.state === 'canceled')
+    actions.push(`<button data-act="retry" data-id="${it.id}">Retry</button>`);
+  if (it.state === 'done')
+    actions.push(`<button data-act="folder" data-id="${it.id}">Open</button>`);
+  actions.push(`<button data-act="remove" data-id="${it.id}" title="Remove from list">✕</button>`);
+
+  return [
+    ['c-name', `
+        <div class="name" title="${esc(it.title)}">${esc(it.title)}</div>
+        <div class="suburl" title="${esc(it.pageUrl || it.url)}">${esc(it.pageUrl || it.url)}</div>
+        ${it.state === 'error' ? `<div class="errmsg" title="${esc(it.error)}">${esc(it.error)}</div>` : ''}`],
+    ['c-kind', `<span class="badge ${kind}">${kind}</span>${it.formatLabel ? `<div class="fmt">${esc(it.formatLabel)}</div>` : ''}`],
+    ['c-size', fmtSize(it.size)],
+    ['c-prog', statusCol],
+    ['c-speed', esc(it.speed || (it.state === 'downloading' ? '…' : ''))],
+    ['c-eta', esc(it.eta || '')],
+    ['c-actions', `<div class="row-actions">${actions.join('')}</div>`]
+  ];
+}
+
+// Rows are kept by job id and patched cell-by-cell. Rebuilding the whole
+// table's innerHTML on every update (as this used to) meant that during a
+// download, when progress updates arrive many times a second, the button
+// under the pointer was replaced between mousedown and mouseup and the click
+// hit nothing: "✕ does nothing" while something else was downloading.
+/** @type {Map<string, {tr: HTMLTableRowElement, cells: string[]}>} */
+const rowCache = new Map();
+
 function render(items) {
   emptyEl.classList.toggle('show', items.length === 0);
 
-  rowsEl.innerHTML = items.map((it) => {
-    const kind = it.kind === 'auto' ? 'progressive' : it.kind;
-    const barCls = ['bar'];
-    if (it.state === 'done') barCls.push('done');
-    else if (it.state === 'error') barCls.push('error');
-    else if (it.state === 'canceled') barCls.push('canceled');
-
-    let statusCol;
-    if (it.state === 'error') statusCol = `<span class="state-error" title="${esc(it.error)}">Failed</span>`;
-    else if (it.state === 'done') statusCol = `<span class="state-done">Done</span>`;
-    else if (it.state === 'canceled') statusCol = `<span class="state-canceled">Canceled</span>`;
-    else statusCol = `<div class="${barCls.join(' ')}"><span style="width:${it.percent || 0}%"></span></div>
-                      <div class="pct">${(it.percent || 0).toFixed(0)}%</div>`;
-
-    const actions = [];
-    if (it.state === 'downloading' || it.state === 'queued')
-      actions.push(`<button data-act="cancel" data-id="${it.id}">Stop</button>`);
-    if (it.state === 'error' || it.state === 'canceled')
-      actions.push(`<button data-act="retry" data-id="${it.id}">Retry</button>`);
-    if (it.state === 'done')
-      actions.push(`<button data-act="folder" data-id="${it.id}">Open</button>`);
-    actions.push(`<button data-act="remove" data-id="${it.id}">✕</button>`);
-
-    return `<tr>
-      <td class="c-name">
-        <div class="name" title="${esc(it.title)}">${esc(it.title)}</div>
-        <div class="suburl" title="${esc(it.pageUrl || it.url)}">${esc(it.pageUrl || it.url)}</div>
-        ${it.state === 'error' ? `<div class="errmsg" title="${esc(it.error)}">${esc(it.error)}</div>` : ''}
-      </td>
-      <td class="c-kind"><span class="badge ${kind}">${kind}</span>${it.formatLabel ? `<div class="fmt">${esc(it.formatLabel)}</div>` : ''}</td>
-      <td class="c-size">${fmtSize(it.size)}</td>
-      <td class="c-prog">${statusCol}</td>
-      <td class="c-speed">${esc(it.speed || (it.state === 'downloading' ? '…' : ''))}</td>
-      <td class="c-eta">${esc(it.eta || '')}</td>
-      <td class="c-actions"><div class="row-actions">${actions.join('')}</div></td>
-    </tr>`;
-  }).join('');
+  const seen = new Set();
+  let prev = null; // last row placed, to keep DOM order == list order
+  for (const it of items) {
+    const cells = rowCells(it);
+    let entry = rowCache.get(it.id);
+    if (!entry) {
+      const tr = document.createElement('tr');
+      for (const [cls, html] of cells) {
+        const td = document.createElement('td');
+        td.className = cls;
+        td.innerHTML = html;
+        tr.appendChild(td);
+      }
+      entry = { tr, cells: cells.map((c) => c[1]) };
+      rowCache.set(it.id, entry);
+    } else {
+      cells.forEach(([, html], i) => {
+        if (entry.cells[i] !== html) {
+          entry.tr.children[i].innerHTML = html;
+          entry.cells[i] = html;
+        }
+      });
+    }
+    const expectedAt = prev ? prev.nextSibling : rowsEl.firstChild;
+    if (expectedAt !== entry.tr) rowsEl.insertBefore(entry.tr, expectedAt);
+    prev = entry.tr;
+    seen.add(it.id);
+  }
+  for (const [id, entry] of rowCache) {
+    if (!seen.has(id)) { entry.tr.remove(); rowCache.delete(id); }
+  }
 
   const active = items.filter((i) => i.state === 'downloading').length;
   const done = items.filter((i) => i.state === 'done').length;
