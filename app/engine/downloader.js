@@ -74,27 +74,47 @@ class Downloader extends EventEmitter {
     const titleName = this.item.title && !/^https?:/i.test(this.item.title)
       ? sanitize(this.item.title).replace(/\s+/g, ' ').trim()
       : '';
-    // Relative template: with -P (below) the final file lands in outDir.
-    const outTemplate = this.item.filename
-      ? sanitize(this.item.filename)
-      : titleName
-        ? `${titleName}.%(ext)s`
-        : '%(title).200B [%(id)s].%(ext)s';
-
     // Every job gets a private working folder for its intermediate files
     // (.part, .fN.mp4 / .fN.m4a). Only the finished file is moved into outDir.
     // Without this, a failed attempt leaves e.g. "Title.f6.mp4" behind and the
     // next attempt with the same title sees "has already been downloaded",
     // skips the fetch and muxes the junk again. Same job id -> same folder, so
     // Stop/Retry still resumes .part files. Removed when the job finishes or
-    // is deleted from the list (see queue.js).
-    const tmpDir = path.join(outDir, '.streamgrab-tmp', String(this.item.id || 'job'));
+    // is deleted from the list (see queue.js). The folder is named by the first
+    // 8 chars of the job id: unique enough, and 28 chars shorter than a full
+    // UUID, which matters for the path budget below.
+    const tmpDir = path.join(outDir, '.streamgrab-tmp', String(this.item.id || 'job').slice(0, 8));
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch {}
     this.item.tmpDir = tmpDir;
+
+    // Windows caps a full path at 260 chars (MAX_PATH) and yt-dlp/Python do
+    // not opt out of it. Intermediate files live in tmpDir with suffixes added
+    // to our name (".f401.mp4-Frag12.part", ".ytdl", ".temp.mp4"), so the name
+    // must fit tmpDir + name + suffix. A tweet's text as the title (200 chars)
+    // under "D:\...\Downloads\.streamgrab-tmp\<uuid>\" blew past it and failed
+    // with "[Errno 2] No such file or directory: '...mp4.ytdl'".
+    // Relative template: with -P (below) the final file lands in outDir.
+    const budget = nameBudget(tmpDir);
+    // A finished file with the same name is never reused: yt-dlp treats an
+    // existing final file as "already downloaded", exits 0 and prints its
+    // path, which looked like a download that did nothing. Like IDM, a second
+    // download of the same video becomes "Title (1).mp4".
+    const outTemplate = this.item.filename
+      ? uniqueName(outDir, fitName(sanitize(this.item.filename), budget))
+      : titleName
+        ? `${uniqueStem(outDir, fitName(titleName, budget))}.%(ext)s`
+        : `%(title).${Math.max(20, budget - 30)}B [%(id)s].%(ext)s`;
 
     const args = [
       '--newline',
       '--no-color',
+      // yt-dlp's Windows build prints in the console code page (cp1252 here)
+      // while we decode its output as UTF-8. With an accented title the
+      // printed final path came back with U+FFFD in it, the app could not find
+      // its own file and "Open" fell back to the folder, which read as "the
+      // download vanished". PYTHONUTF8/PYTHONIOENCODING are ignored by the
+      // frozen exe; --encoding is honoured (verified: "publié" -> c3 a9).
+      '--encoding', 'utf-8',
       '--no-playlist',
       '--restrict-filenames',
       '--concurrent-fragments', String(s.concurrentFragments || 8),
@@ -114,6 +134,16 @@ class Downloader extends EventEmitter {
     // manifests and site extractors: best video at or below the chosen height
     // plus best audio, muxed; or the whole thing if it only comes combined.
     const q = this.item.quality || { kind: 'best' };
+    // Format ranking: resolution, frame rate, SDR over HDR, then a plain
+    // https file over HLS/DASH; everything else (codec, bitrate, language)
+    // stays at yt-dlp's defaults, so YouTube picks are unchanged. The proto
+    // step matters because extractors may invert it: X/Twitter declares
+    // "proto:m3u8", so at 640x360 it took the 187 kbps HLS rendition over the
+    // 832 kbps MP4 that IDM downloads - a 53 MB file for a 2-hour video,
+    // fetched fragment by fragment. A single https file also lets aria2c
+    // pull it with 16 connections. User -S fields outrank extractor ones.
+    // (Checked: "br" before "proto" would push YouTube onto 28 Mbps HLS.)
+    args.push('-S', 'res,fps,hdr:12,proto');
     if (q.kind === 'audio') {
       args.push('-f', 'bestaudio/best', '--extract-audio', '--audio-format', 'm4a', '--audio-quality', '0');
     } else {
@@ -226,9 +256,11 @@ class Downloader extends EventEmitter {
       const secs = ((Date.now() - started) / 1000).toFixed(1);
       if (this.killed) { log.info(tag, 'canceled after', secs + 's'); return; }
       if (code === 0) {
-        log.info(tag, 'completed in', secs + 's', '->', this.lastFilepath || '(no path printed)');
+        const fp = resolvePrintedPath(this.lastFilepath);
+        if (fp !== this.lastFilepath) log.warn(tag, 'printed path did not exist; matched', fp);
+        log.info(tag, 'completed in', secs + 's', '->', fp || '(no path printed)');
         removeTmp(this.item);
-        this.emit('completed', this.lastFilepath);
+        this.emit('completed', fp);
       } else {
         const msg = firstError(stderrTail) || `yt-dlp exited with code ${code}`;
         log.error(tag, 'failed after', secs + 's', 'code', code, '-', msg);
@@ -315,6 +347,66 @@ function cleanQuery(q) {
 function sanitize(name) {
   return String(name).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 200);
 }
+
+// Characters left for a file name (extension included) so that every path
+// yt-dlp creates under `dir` stays inside Windows' MAX_PATH. The reserve
+// covers the separator and the longest intermediate suffix yt-dlp appends
+// (".f401.mp4-Frag1234.part" is 23 chars, ".mp4.ytdl" / ".temp.mp4" 9) with
+// some slack; the floor keeps names readable under an absurdly deep folder.
+const MAX_PATH = 260;
+const NAME_RESERVE = 40;
+function nameBudget(dir) {
+  return Math.max(24, MAX_PATH - String(dir).length - NAME_RESERVE);
+}
+
+// "<stem>" -> "<stem> (n)" until no "<dir>/<stem>.<media ext>" exists.
+const FINAL_EXTS = ['mp4', 'm4a', 'mkv', 'webm', 'mp3', 'mov'];
+function uniqueStem(dir, stem) {
+  const taken = (s) => FINAL_EXTS.some((e) => fs.existsSync(path.join(dir, `${s}.${e}`)));
+  if (!taken(stem)) return stem;
+  for (let n = 1; n < 1000; n++) { const s = `${stem} (${n})`; if (!taken(s)) return s; }
+  return `${stem} (${Date.now()})`;
+}
+// Same for a full file name the user chose ("foo.mp4" -> "foo (1).mp4").
+function uniqueName(dir, name) {
+  if (!fs.existsSync(path.join(dir, name))) return name;
+  const m = name.match(/^(.*?)(\.[A-Za-z0-9]{1,5})?$/);
+  const stem = m[1], ext = m[2] || '';
+  for (let n = 1; n < 1000; n++) { const s = `${stem} (${n})${ext}`; if (!fs.existsSync(path.join(dir, s))) return s; }
+  return `${stem} (${Date.now()})${ext}`;
+}
+
+// A path that yt-dlp printed but that does not exist, containing U+FFFD
+// (bytes we could not decode): match it against the directory listing with
+// each U+FFFD as a one-character wildcard. Returns the input when nothing
+// matches or nothing needs resolving. Also repairs paths saved by earlier
+// versions in queue.json.
+function resolvePrintedPath(p) {
+  if (!p || !p.includes('�') || fs.existsSync(p)) return p;
+  try {
+    const dir = path.dirname(p);
+    const re = new RegExp('^' + path.basename(p).split('�').map(escapeRe).join('.') + '$');
+    const hit = fs.readdirSync(dir).find((n) => re.test(n));
+    return hit ? path.join(dir, hit) : p;
+  } catch { return p; }
+}
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+// Trim `name` to at most `max` chars, preferring a word boundary, keeping a
+// short trailing extension ("foo.mp4") intact and never ending in a dot or a
+// space (both invalid on Windows). Names that already fit are unchanged.
+function fitName(name, max) {
+  const s = String(name);
+  if (s.length <= max) return s;
+  const extMatch = s.match(/\.[A-Za-z0-9]{1,5}$/);
+  const ext = extMatch ? extMatch[0] : '';
+  const stem = ext ? s.slice(0, -ext.length) : s;
+  let cut = stem.slice(0, Math.max(1, max - ext.length));
+  const sp = cut.lastIndexOf(' ');
+  if (sp > cut.length * 0.6) cut = cut.slice(0, sp);
+  cut = cut.replace(/[\s.]+$/, '') || 'video';
+  return cut + ext;
+}
 function parsePct(s) {
   const m = String(s).match(/([\d.]+)%/);
   return m ? Math.min(100, parseFloat(m[1])) : 0;
@@ -335,4 +427,4 @@ function firstError(stderr) {
   return line ? line.replace(/^ERROR:\s*/i, '').trim() : '';
 }
 
-module.exports = { Downloader, resolveBin, hasBin, removeTmp };
+module.exports = { Downloader, resolveBin, hasBin, removeTmp, fitName, nameBudget, uniqueStem, uniqueName, resolvePrintedPath };

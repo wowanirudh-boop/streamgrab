@@ -43,6 +43,24 @@ const SITE_PATTERNS = [
   /https?:\/\/(www\.|m\.)?(vk\.com|vkvideo\.ru|vk\.ru)\/(video-?\d+_\d+|clip-?\d+_\d+)/i
 ];
 function matchesSite(url) { return SITE_PATTERNS.some((re) => re.test(url)); }
+
+// CDN hosts whose sniffed streams are redundant once a page item exists for
+// the tab. An X status page autoplays and preloads dozens of timeline videos
+// from video.twimg.com, each with its own HLS master and variant playlists:
+// listing them gives 70+ identically-named rows, none of them obviously "the
+// tweet's video". yt-dlp's twitter extractor gets it from the status URL, so
+// only that page item is shown. (YouTube's googlevideo chunks are dropped at
+// record time for the same reason.)
+const SITE_CDNS = [
+  { page: /https?:\/\/(twitter|x)\.com\/[^/]+\/status\//i, cdn: /(^|\.)twimg\.com$/i }
+];
+function redundantCdnFor(pageUrl) {
+  const hit = SITE_CDNS.find((s) => s.page.test(pageUrl || ''));
+  return hit ? hit.cdn : null;
+}
+function hostOf(u) {
+  try { return new URL(u).hostname; } catch { return ''; }
+}
 function siteName(url) {
   if (/youtube\.com|youtu\.be/i.test(url)) return 'YouTube';
   if (/vimeo\.com/i.test(url)) return 'Vimeo';
@@ -509,7 +527,13 @@ function segmentKey(u) {
 // Collapse variant playlists into their master, and group leftover siblings so
 // one video = one item.
 function computePresented(tabId) {
-  const items = mediaByTab.get(tabId) || [];
+  const raw = mediaByTab.get(tabId) || [];
+
+  // With a page item for a site whose CDN we know, the sniffed streams from
+  // that CDN are noise (see SITE_CDNS): the page item covers the video.
+  const pageItem = raw.find((i) => i.role === 'page');
+  const cdnRe = pageItem ? redundantCdnFor(pageItem.url) : null;
+  const items = cdnRe ? raw.filter((i) => i.role === 'page' || !cdnRe.test(hostOf(i.url))) : raw;
 
   const variantUrls = new Set();
   const masterDirs = new Set();

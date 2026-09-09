@@ -303,6 +303,19 @@ static class Host
             var here = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
             var guess = Path.GetFullPath(Path.Combine(here, "..", "..", "StreamGrab.exe"));
             if (File.Exists(guess)) { exe = guess; args = new List<string> { "--hidden" }; }
+            else
+            {
+                // Development checkout: <repo>/native-host/streamgrab-host.exe ->
+                // <repo>/node_modules/electron/dist/electron.exe <repo> --hidden
+                var repo = Path.GetFullPath(Path.Combine(here, ".."));
+                var dev = Path.Combine(repo, "node_modules", "electron", "dist", "electron.exe");
+                if (File.Exists(dev) && File.Exists(Path.Combine(repo, "package.json")))
+                {
+                    exe = dev;
+                    args = new List<string> { repo, "--hidden" };
+                    Log("bridge.json missing; using dev layout " + dev);
+                }
+            }
         }
         if (string.IsNullOrEmpty(exe) || !File.Exists(exe))
         {
