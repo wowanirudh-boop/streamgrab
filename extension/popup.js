@@ -5,10 +5,38 @@ const connEl = document.getElementById('conn');
 const errEl = document.getElementById('err');
 const reportEl = document.getElementById('report');
 
-function showError(msg) {
-  if (!msg) { errEl.classList.remove('show'); return; }
-  errEl.innerHTML = `<b>Not connected to the app.</b><br>Reason: ${esc(msg)}`;
-  errEl.classList.add('show');
+// Where the desktop app lives. The extension only detects videos; the app
+// (via a native-messaging host it registers on first run) does the downloading.
+const APP_DOWNLOAD_URL = 'https://github.com/wowanirudh-boop/streamgrab-releases/releases/latest';
+
+// Chrome's native-messaging errors when the app was never installed (host not
+// registered) or is an older build that does not allow this extension's id.
+function needsSetup(msg) {
+  const m = String(msg || '').toLowerCase();
+  return m.includes('not found') || m.includes('forbidden');
+}
+
+function showError(msg, log) {
+  if (!msg) { errEl.className = 'err'; errEl.innerHTML = ''; return; }
+  if (needsSetup(msg)) {
+    errEl.className = 'err show setup';
+    errEl.innerHTML = `<b>One-time setup: install the StreamGrab desktop app</b>
+      <p>This extension finds videos on the page. The free StreamGrab app for
+      Windows does the downloading, so it has to be installed and run once.</p>
+      <ol>
+        <li><a href="${APP_DOWNLOAD_URL}" target="_blank" rel="noopener">Download and install the desktop app</a>
+          <span class="hint">or, in a terminal: <code>winget install AnirudhSangubhotla.StreamGrab</code></span></li>
+        <li>Open it once, then reopen this popup.</li>
+      </ol>
+      <p class="hint">Already installed? Update it to the latest version, then start it again.</p>`;
+  } else {
+    errEl.className = 'err show';
+    errEl.innerHTML = `<b>Not connected to the app.</b><br>Reason: ${esc(msg)}
+      <p class="hint">Start StreamGrab from the Start menu (or its tray icon), then reopen this popup.</p>`;
+  }
+  if (log && log.length) {
+    errEl.innerHTML += `<details><summary>details</summary><pre class="log">${esc(log.join('\n'))}</pre></details>`;
+  }
 }
 
 // The badge shows what you GET (an MP4), like IDM does; the stream protocol
@@ -109,10 +137,7 @@ async function copyReport(tabId, tabUrl) {
     chrome.runtime.sendMessage({ type: 'get_status' }, (st) => {
       if (!st) return;
       setConn(st.appConnected);
-      showError(st.appConnected ? '' : (st.lastError || 'app not running or unreachable'));
-      if (!st.appConnected && st.log && st.log.length) {
-        errEl.innerHTML += `<pre class="log">${esc(st.log.join('\n'))}</pre>`;
-      }
+      showError(st.appConnected ? '' : (st.lastError || 'app not running or unreachable'), st.log);
     });
   });
 })();

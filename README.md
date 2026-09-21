@@ -75,13 +75,34 @@ Produces `dist-installer/StreamGrab Setup x.y.z.exe`. The installer bundles
 manifest `key` (the Web Store rejects it). The store then assigns its own id,
 which the host must also allow:
 
-1. Upload `dist/store` as a draft in the Chrome Web Store developer dashboard.
-2. Copy the item id, add it to `EXTENSION_IDS` in `app/host-registration.js`,
-   ship a new app build. (Users can also add ids under `extraExtensionIds` in
+1. Bump `version` in `extension/manifest.json` (the store rejects a version
+   that is not higher than the published one), run `npm run build-store`, zip
+   the *contents* of `dist/store` and upload the zip in the developer dashboard.
+   The script copies every `.js/.css/.html` in `extension/` and fails if a file
+   the manifest or a page references is missing (the 0.1.2 upload shipped
+   without `quality.js` and was rejected as "does not work").
+2. The store id (`haalabacafmjbflbdfkkaibahcnilnel`) is in `EXTENSION_IDS` in
+   `app/host-registration.js`; any new id must be added there and shipped in
+   a new app build. (Users can also add ids under `extraExtensionIds` in
    `%APPDATA%\StreamGrab\settings.json` without a rebuild.)
-3. Optional but recommended: copy the store's public key (dashboard →
-   Package → *View public key*) into `extension/manifest.json` as `key`, so the
-   unpacked and store versions share one id.
+3. The reviewer installs the extension on a machine **without** the desktop
+   app. The listing must say the app is required and link to it, and the
+   reviewer notes must explain how to test; see `store-listing.md`. The
+   popup shows a setup card with the download link when the app is missing.
+4. The desktop app is distributed two ways, and the popup, the listing and
+   `store-listing.md` mention both:
+   - GitHub Releases on the public repo `wowanirudh-boop/streamgrab-releases`
+     (the code repo stays private). After `npm run dist`, copy the installer to
+     `StreamGrab-Setup.exe` and `gh release create vX.Y.Z StreamGrab-Setup.exe
+     --repo wowanirudh-boop/streamgrab-releases`. The asset name must not
+     change: the README there links `releases/latest/download/StreamGrab-Setup.exe`.
+   - winget as `AnirudhSangubhotla.StreamGrab` (manifests under
+     `manifests/a/AnirudhSangubhotla/StreamGrab/<version>` in
+     `microsoft/winget-pkgs`). Each release needs a new-version PR with the
+     version-pinned installer URL and its SHA-256; the NSIS uninstall
+     ProductCode is `{43c9fd28-a257-5401-a49a-3475b27df382}`.
+   The installer is not code-signed, so SmartScreen prompts on first run;
+   the release notes and reviewer notes say so.
 
 ## Limitations (read these)
 

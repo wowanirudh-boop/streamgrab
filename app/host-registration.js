@@ -17,7 +17,8 @@ const HOST_NAME = 'com.streamgrab.host';
 //    Dashboard -> item id). Better still: copy the store's public key into the
 //    extension manifest "key" so the dev and store ids become identical.
 const EXTENSION_IDS = [
-  'mgpgijoaodikafklfkljijgedmmogddg'
+  'mgpgijoaodikafklfkljijgedmmogddg', // unpacked/dev (from manifest "key")
+  'haalabacafmjbflbdfkkaibahcnilnel'  // Chrome Web Store
 ];
 
 const REG_KEYS = {
