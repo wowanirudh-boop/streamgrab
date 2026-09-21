@@ -143,14 +143,15 @@ class Downloader extends EventEmitter {
     // fetched fragment by fragment. A single https file also lets aria2c
     // pull it with 16 connections. User -S fields outrank extractor ones.
     // (Checked: "br" before "proto" would push YouTube onto 28 Mbps HLS.)
-    args.push('-S', 'res,fps,hdr:12,proto');
+    // "res:480" ranks the largest resolution at or below 480 first and, when
+    // there is none, the smallest above it (res is the shorter side, so it
+    // also reads portrait video correctly).
+    const res = q.kind === 'height' && q.height ? `res:${q.height}` : 'res';
+    args.push('-S', `${res},fps,hdr:12,proto`);
     if (q.kind === 'audio') {
       args.push('-f', 'bestaudio/best', '--extract-audio', '--audio-format', 'm4a', '--audio-quality', '0');
     } else {
-      if (q.kind === 'height' && q.height) {
-        const h = q.height;
-        args.push('-f', `bestvideo*[height<=${h}]+bestaudio/best[height<=${h}]/bestvideo*+bestaudio/best`);
-      }
+      if (q.kind === 'height' && q.height) args.push('-f', heightSelector(q.height));
       args.push('--merge-output-format', 'mp4');
     }
 
@@ -337,6 +338,46 @@ function removeTmp(item) {
   try { fs.rmdirSync(path.dirname(d)); } catch {}
 }
 
+// yt-dlp format selector for "at most h". A plain [height<=h] is not enough:
+// an HLS master without RESOLUTION= (gammacdn: BANDWIDTH only, variants named
+// "…_480p.m3u8") gives yt-dlp no heights at all, the filter matched nothing and
+// the old "/best" tail quietly downloaded 2160p for a 480p pick. Tiers, first
+// that matches wins:
+//   1. resolution known: no filter at all. "-S res:h" (see buildArgs) already
+//      ranks the largest shorter-side <= h first, else the smallest above it,
+//      so 480x852 is X's portrait "480p" and 240p asked of a 360p-and-up
+//      ladder gets 360p, not the best.
+//   2. unknown, but the variant URL names it ("_480p", "/360p/")
+//   3. unknown and unnamed: a generous bitrate ceiling for that height
+//   4. everything is above that ceiling: the smallest
+//   5. whatever exists, rather than failing the download
+// The URL regex must not contain ']' (it would end yt-dlp's [filter]).
+// Regex source for any 3-4 digit number <= n, so "_432p" counts for a 480p
+// pick (sites use odd heights: 432, 540, 576). Alternations instead of
+// character classes because of the ']' rule above. upTo(480) ->
+// (?:1|2|3)\d\d|4(?:0|1|2|3|4|5|6|7)\d|480
+function upTo(n) {
+  const s = String(n);
+  const alt = (from, below) => `(?:${Array.from({ length: below - from }, (_, k) => from + k).join('|')})`;
+  const out = s.length > 3 ? ['\\d\\d\\d'] : [];
+  for (let i = 0; i < s.length; i++) {
+    const d = +s[i], from = i ? 0 : 1;
+    if (d > from) out.push(s.slice(0, i) + alt(from, d) + '\\d'.repeat(s.length - i - 1));
+  }
+  return [...out, s].join('|');
+}
+
+const LADDER_KBPS = [[144, 400], [240, 700], [360, 1200], [480, 2000], [720, 4000], [1080, 8000], [1440, 16000]];
+function heightSelector(h) {
+  const pair = (f, w = 'best') => `${w}video*${f}+bestaudio/${w}${f}`;
+  const tiers = [pair('[height>0]')];
+  tiers.push(pair(`[url~='(?:^|\\W|_)(?:${upTo(h)})p(?:\\W|_|$)']`));
+  const cap = LADDER_KBPS.find(([x]) => x >= h);
+  if (cap) tiers.push(pair(`[tbr<=${cap[1]}]`), pair(`[tbr>${cap[1]}]`, 'worst'));
+  tiers.push('bestvideo*+bestaudio/best');
+  return tiers.join('/');
+}
+
 // yt-dlp splits extractor-args on ';' and ',', so a query containing either
 // cannot be passed through safely; return '' to fall back to the manifest query.
 function cleanQuery(q) {
@@ -427,4 +468,4 @@ function firstError(stderr) {
   return line ? line.replace(/^ERROR:\s*/i, '').trim() : '';
 }
 
-module.exports = { Downloader, resolveBin, hasBin, removeTmp, fitName, nameBudget, uniqueStem, uniqueName, resolvePrintedPath };
+module.exports = { Downloader, heightSelector, resolveBin, hasBin, removeTmp, fitName, nameBudget, uniqueStem, uniqueName, resolvePrintedPath };

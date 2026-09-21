@@ -1,6 +1,6 @@
 {
   "name": "streamgrab",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
   "description": "IDM-style download manager with Chrome video detection (Electron + yt-dlp / aria2 / ffmpeg).",
   "main": "app/main.js",
