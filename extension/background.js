@@ -469,7 +469,13 @@ function parseMaster(text, baseUrl) {
         if (!u.search && base.search && u.origin === base.origin) { u.search = base.search; inherited = true; }
         abs = u.href;
       } catch {}
-      out.push({ resolution: res, bandwidth: bw, url: abs, height: res ? parseInt(res.split('x')[1], 10) : 0, inherited });
+      // No RESOLUTION= (gammacdn lists BANDWIDTH only): the variant name usually
+      // says it, "…_480p.m3u8". The app matches the same name (heightSelector).
+      let line = lines[j] || '';
+      try { line = decodeURIComponent(line); } catch {}
+      const named = res ? null : /(?:^|[\W_])(\d{3,4})p(?:[\W_]|$)/.exec(line);
+      const height = res ? parseInt(res.split('x')[1], 10) : named ? parseInt(named[1], 10) : 0;
+      out.push({ resolution: res, bandwidth: bw, url: abs, height, inherited });
     }
   }
   return out;
